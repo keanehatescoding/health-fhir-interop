@@ -15,4 +15,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - run: python -m matching.validate_bundles
+      - name: Run full pipeline from scratch (generate -> match -> build -> validate)
+        run: |
+          python data_gen/generate_synthetic_data.py
+          python -m matching.match_patients
+          python -m matching.build_fhir_bundles
+          python -m matching.validate_bundles
+
+      - name: Fail if regenerating the pipeline changed anything vs what's committed
+        run: git diff --exit-code -- data/raw data/patient_clusters.json data/fhir_ready
