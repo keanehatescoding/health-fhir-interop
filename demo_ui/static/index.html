@@ -38,6 +38,14 @@
   .id-badge.consent-permit { background: #ecfdf5; color: var(--after); font-family: inherit; }
   .id-badge.consent-deny { background: var(--review-bg); color: var(--review); font-family: inherit; font-weight: 600; }
   .withheld-notice { background: var(--review-bg); color: var(--review); border: 1px solid var(--review); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 10px 0; }
+  .family-card { border-color: #d8b4fe; }
+  .risk-item { border-left: 3px solid var(--border); padding: 6px 0 6px 12px; margin: 8px 0; font-size: 13px; }
+  .risk-outcome { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .risk-rationale { color: var(--muted); margin-top: 2px; }
+  .risk-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 700; text-transform: uppercase; }
+  .risk-badge.risk-high { background: #fee2e2; color: var(--review); }
+  .risk-badge.risk-moderate { background: #fef3c7; color: #92400e; }
+  .risk-badge.risk-low { background: #ecfdf5; color: var(--after); }
   .field-row { font-size: 13px; color: var(--muted); margin: 2px 0; }
   .field-row b { color: var(--text); font-weight: 600; }
   .event { border-left: 2px solid var(--border); padding: 6px 0 6px 12px; margin: 8px 0; font-size: 13px; }
@@ -171,10 +179,35 @@ function renderAfter({ bundle, withheld }) {
     `<div class="withheld-notice">&#128274; ${w.count} record${w.count > 1 ? 's' : ''} from ${w.organization} withheld &mdash; patient did not consent to sharing this source.</div>`
   ).join('');
 
+  const familyHistory = resources.filter(r => r.resourceType === 'FamilyMemberHistory');
+  const riskAssessments = resources.filter(r => r.resourceType === 'RiskAssessment');
+
+  const familyHistoryHtml = familyHistory.map(f => {
+    const cond = (f.condition || [])[0];
+    const relText = (f.relationship && f.relationship.text) || 'Relative';
+    const condText = cond ? (cond.code.text || '') : '';
+    const age = cond && cond.onsetAge ? ` at age ${cond.onsetAge.value}` : '';
+    return `<div class="field-row"><b>${relText}:</b> ${condText}${age}</div>`;
+  }).join('');
+
+  const riskHtml = riskAssessments.flatMap(ra => (ra.prediction || []).map(p => {
+    const risk = (p.qualitativeRisk && p.qualitativeRisk.coding && p.qualitativeRisk.coding[0].code) || '';
+    return `<div class="risk-item">
+      <div class="risk-outcome">${p.outcome.text} <span class="risk-badge risk-${risk}">${risk} risk</span></div>
+      <div class="risk-rationale">${p.rationale || ''}</div>
+    </div>`;
+  })).join('');
+
+  const familyCardHtml = (familyHistory.length || riskHtml) ? `<div class="card family-card">
+    <h3>Family History &amp; Hereditary Risk</h3>
+    ${familyHistoryHtml || '<div class="empty">No family history on record</div>'}
+    ${riskHtml}
+  </div>` : '';
+
   const timeline = resources
-    // Encounter/Consent carry no info beyond what's already shown elsewhere
-    // (Condition/Observation/Claim for the visit, the consent badges above).
-    .filter(r => !['Patient', 'Encounter', 'Consent'].includes(r.resourceType))
+    // Encounter/Consent/FamilyMemberHistory/RiskAssessment carry no info
+    // beyond what's already shown elsewhere (consent badges, family card).
+    .filter(r => !['Patient', 'Encounter', 'Consent', 'FamilyMemberHistory', 'RiskAssessment'].includes(r.resourceType))
     .map(r => {
       let date = (r.period && r.period.start) || r.created || r.recordedDate || r.effectiveDateTime || '';
       let label = (r.code && r.code.text) || r.resourceType;
@@ -198,7 +231,8 @@ function renderAfter({ bundle, withheld }) {
     <div>${consentBadges}</div>
     ${withheldHtml}
     ${timelineHtml || '<div class="empty">No linked clinical events</div>'}
-  </div>`;
+  </div>
+  ${familyCardHtml}`;
 }
 
 loadPatients();

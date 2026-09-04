@@ -26,7 +26,8 @@ load_dotenv(".env")
 load_dotenv(".env.real", override=True)
 
 FHIR_READY_DIR = pathlib.Path(__file__).resolve().parent.parent / "data" / "fhir_ready"
-_RESOURCE_TYPES = ["Patient", "Encounter", "Condition", "Observation", "MedicationRequest", "Claim", "Consent"]
+_RESOURCE_TYPES = ["Patient", "Encounter", "Condition", "Observation", "MedicationRequest", "Claim", "Consent",
+                   "FamilyMemberHistory", "RiskAssessment"]
 
 
 def _mode():

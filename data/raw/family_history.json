@@ -1,0 +1,42 @@
+[
+  {
+    "source": "nhif",
+    "key": "NHIF-10001",
+    "relationship": "father",
+    "relationship_code": "FTH",
+    "condition_code": "I25.1",
+    "condition_text": "Coronary artery disease",
+    "onset_age": 55,
+    "deceased": true
+  },
+  {
+    "source": "nhif",
+    "key": "NHIF-10003",
+    "relationship": "mother",
+    "relationship_code": "MTH",
+    "condition_code": "C50.9",
+    "condition_text": "Breast cancer",
+    "onset_age": 47,
+    "deceased": false
+  },
+  {
+    "source": "nhif",
+    "key": "NHIF-10006",
+    "relationship": "father",
+    "relationship_code": "FTH",
+    "condition_code": "E11.9",
+    "condition_text": "Type 2 diabetes mellitus",
+    "onset_age": 60,
+    "deceased": false
+  },
+  {
+    "source": "nhif",
+    "key": "NHIF-10006",
+    "relationship": "mother",
+    "relationship_code": "MTH",
+    "condition_code": "I10",
+    "condition_text": "Essential hypertension",
+    "onset_age": 58,
+    "deceased": false
+  }
+]

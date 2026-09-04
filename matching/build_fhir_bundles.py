@@ -25,10 +25,20 @@ query_api/healthlake_query.py, not what gets ingested. This mirrors how real
 interoperability platforms work: the FHIR store holds everything; access
 control is enforced at the application layer in front of it.
 
+data/raw/family_history.json (relatives' conditions, captured at NHIF intake)
+becomes one FamilyMemberHistory resource per relative/condition, plus one
+derived RiskAssessment per person summarizing which conditions their family
+history puts them at elevated risk for -- FHIR's own resources for exactly
+this "does this patient's family history suggest a condition they should be
+screened for" question. RISK_RULES is a small keyword-matched lookup table,
+not a validated clinical risk model -- good enough for a hackathon demo, not
+for real risk stratification.
+
 Run: python matching/build_fhir_bundles.py
 Reads:  data/patient_clusters.json, data/raw/*
 Writes: data/fhir_ready/Patient.ndjson, Encounter.ndjson, Condition.ndjson,
-        Observation.ndjson, Claim.ndjson, Consent.ndjson
+        Observation.ndjson, Claim.ndjson, Consent.ndjson,
+        FamilyMemberHistory.ndjson, RiskAssessment.ndjson
 """
 import csv
 import json
@@ -39,8 +49,10 @@ from fhir.resources.R4B.claim import Claim
 from fhir.resources.R4B.condition import Condition
 from fhir.resources.R4B.consent import Consent
 from fhir.resources.R4B.encounter import Encounter
+from fhir.resources.R4B.familymemberhistory import FamilyMemberHistory
 from fhir.resources.R4B.observation import Observation
 from fhir.resources.R4B.patient import Patient
+from fhir.resources.R4B.riskassessment import RiskAssessment
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 RAW_DIR = DATA_DIR / "raw"
@@ -61,6 +73,26 @@ SOURCE_ORG_DISPLAY = {
 
 RESOURCE_NAMESPACE = uuid.UUID("6f9c3e2a-0000-4000-8000-000000000002")
 
+# Keyword (matched case-insensitively against a family member's condition
+# text) -> the condition a descendant may be at elevated risk for, plus a
+# screening suggestion. Deliberately simple: a hackathon-scale stand-in for
+# real hereditary risk scoring, not a clinical model.
+RISK_RULES = [
+    {"match": "diabetes", "outcome_code": "E11.9", "outcome_text": "Type 2 diabetes mellitus",
+     "qualitative_risk": "high", "screening": "annual fasting glucose / HbA1c screening"},
+    {"match": "hypertension", "outcome_code": "I10", "outcome_text": "Essential hypertension",
+     "qualitative_risk": "moderate", "screening": "routine blood pressure monitoring"},
+    {"match": "breast cancer", "outcome_code": "C50.9", "outcome_text": "Breast cancer",
+     "qualitative_risk": "moderate", "screening": "earlier/more frequent mammogram screening"},
+    {"match": "coronary artery disease", "outcome_code": "I25.1", "outcome_text": "Coronary artery disease",
+     "qualitative_risk": "moderate", "screening": "lipid profile and cardiac risk screening"},
+]
+
+
+def match_risk_rule(condition_text):
+    lowered = (condition_text or "").lower()
+    return next((rule for rule in RISK_RULES if rule["match"] in lowered), None)
+
 
 def source_meta(source):
     return {"source": f"urn:source:{source}"}
@@ -75,6 +107,11 @@ def load_raw():
     facb = json.loads((RAW_DIR / "facility_b_akuh.json").read_text())
     facc_rows = list(csv.DictReader((RAW_DIR / "facility_c_clinic.txt").open(), delimiter="|"))
     return nhif_rows, facb, facc_rows
+
+
+def load_family_history():
+    path = RAW_DIR / "family_history.json"
+    return json.loads(path.read_text()) if path.exists() else []
 
 
 def build_patient(person_id, member_records, national_id, linked_person_ids=None):
@@ -174,9 +211,63 @@ def build_consent(person_id, source, consent_value, date, res_id):
     )
 
 
+def build_family_member_history(person_id, source, relationship, relationship_code,
+                                 condition_code, condition_text, onset_age, deceased, res_id):
+    return FamilyMemberHistory(
+        id=res_id,
+        meta=source_meta(source),
+        status="completed",
+        patient={"reference": f"Patient/{person_id}"},
+        relationship={
+            "coding": [{"system": "http://terminology.hl7.org/CodeSystem/v3-RoleCode",
+                        "code": relationship_code, "display": relationship}],
+            "text": relationship.capitalize(),
+        },
+        deceasedBoolean=deceased,
+        condition=[{
+            "code": {"coding": [{"code": condition_code}] if condition_code else [], "text": condition_text},
+            "onsetAge": {"value": onset_age, "unit": "years",
+                         "system": "http://unitsofmeasure.org", "code": "a"},
+        }],
+    )
+
+
+def build_risk_assessment(person_id, source, entries, fmh_ids, res_id):
+    predictions, seen_outcomes = [], set()
+    for entry in entries:
+        rule = match_risk_rule(entry["condition_text"])
+        if not rule or rule["outcome_text"] in seen_outcomes:
+            continue
+        seen_outcomes.add(rule["outcome_text"])
+        predictions.append({
+            "outcome": {"coding": [{"code": rule["outcome_code"]}], "text": rule["outcome_text"]},
+            "qualitativeRisk": {"coding": [{
+                "system": "http://terminology.hl7.org/CodeSystem/risk-probability",
+                "code": rule["qualitative_risk"],
+            }]},
+            "rationale": (
+                f"{entry['relationship'].capitalize()} diagnosed with {entry['condition_text']} "
+                f"at age {entry['onset_age']} — first-degree relative history increases risk. "
+                f"Suggested: {rule['screening']}."
+            ),
+        })
+    if not predictions:
+        return None
+    return RiskAssessment(
+        id=res_id,
+        meta=source_meta(source),
+        status="final",
+        subject={"reference": f"Patient/{person_id}"},
+        basis=[{"reference": f"FamilyMemberHistory/{fid}"} for fid in fmh_ids],
+        prediction=predictions,
+        note=[{"text": "Derived from family history; not a clinical diagnosis. For screening guidance only."}],
+    )
+
+
 def main():
     clusters = json.loads((DATA_DIR / "patient_clusters.json").read_text())
     nhif_rows, facb, facc_rows = load_raw()
+    family_history_rows = load_family_history()
 
     key_to_person = {}
     key_to_national_id = {}
@@ -255,6 +346,27 @@ def main():
         ))
         note_consent("facility_c", row["patient_code"], person_id, row["consent"], row["visit_date"])
 
+    family_histories, risk_assessments = [], []
+    fh_entries_by_person = {}
+    for i, row in enumerate(family_history_rows):
+        person_id = key_to_person.get((row["source"], row["key"]))
+        if not person_id:
+            continue
+        fmh_id = resource_id("familymemberhistory", row["source"], row["key"], str(i))
+        family_histories.append(build_family_member_history(
+            person_id, row["source"], row["relationship"], row["relationship_code"],
+            row["condition_code"], row["condition_text"], row["onset_age"], row["deceased"], fmh_id,
+        ))
+        fh_entries_by_person.setdefault(person_id, []).append({**row, "_fmh_id": fmh_id})
+
+    for person_id, entries in fh_entries_by_person.items():
+        risk = build_risk_assessment(
+            person_id, entries[0]["source"], entries, [e["_fmh_id"] for e in entries],
+            resource_id("riskassessment", person_id),
+        )
+        if risk:
+            risk_assessments.append(risk)
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _write_ndjson("Patient", patients)
     _write_ndjson("Encounter", encounters)
@@ -262,10 +374,13 @@ def main():
     _write_ndjson("Observation", observations)
     _write_ndjson("Claim", claims)
     _write_ndjson("Consent", consents)
+    _write_ndjson("FamilyMemberHistory", family_histories)
+    _write_ndjson("RiskAssessment", risk_assessments)
 
     print(f"Patients: {len(patients)}, Encounters: {len(encounters)}, "
           f"Conditions: {len(conditions)}, Observations: {len(observations)}, Claims: {len(claims)}, "
-          f"Consents: {len(consents)}")
+          f"Consents: {len(consents)}, FamilyMemberHistory: {len(family_histories)}, "
+          f"RiskAssessments: {len(risk_assessments)}")
     print(f"Wrote NDJSON bundles to {OUT_DIR}")
 
 

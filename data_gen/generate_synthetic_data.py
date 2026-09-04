@@ -33,10 +33,18 @@ interoperability record -- this is separate from identity matching: a
 "deny" source still gets matched/linked (the platform must still know it's
 the same person), but its clinical data is withheld at query time.
 
+family_history_rows() adds NHIF-intake family history for 3 people who do
+NOT already carry the hereditary condition themselves in their own records
+-- Grace (father: coronary artery disease), Mary (mother: breast cancer),
+David (father: type 2 diabetes, mother: hypertension) -- so
+matching/build_fhir_bundles.py's derived RiskAssessment is a genuinely new
+insight in the demo (predictive, not restating an existing diagnosis).
+
 Run: python data_gen/generate_synthetic_data.py
 Writes: data/raw/nhif_claims.csv
         data/raw/facility_b_akuh.json
         data/raw/facility_c_clinic.txt   (pipe-delimited, no national id column)
+        data/raw/family_history.json
 """
 import csv
 import json
@@ -178,6 +186,29 @@ def facility_c_rows():
     ]
 
 
+def family_history_rows():
+    # Keyed by the same (source, key) tuples used elsewhere so
+    # build_fhir_bundles.py can join straight onto the already-resolved
+    # person clusters -- no separate identity matching needed for this data.
+    return [
+        # P1 Grace Wanjiru Njeri - father, coronary artery disease
+        dict(source="nhif", key="NHIF-10001", relationship="father", relationship_code="FTH",
+             condition_code="I25.1", condition_text="Coronary artery disease",
+             onset_age=55, deceased=True),
+        # P3 Mary Achieng Odhiambo - mother, breast cancer
+        dict(source="nhif", key="NHIF-10003", relationship="mother", relationship_code="MTH",
+             condition_code="C50.9", condition_text="Breast cancer",
+             onset_age=47, deceased=False),
+        # P6 David Kiprotich Rono - father (diabetes) and mother (hypertension)
+        dict(source="nhif", key="NHIF-10006", relationship="father", relationship_code="FTH",
+             condition_code="E11.9", condition_text="Type 2 diabetes mellitus",
+             onset_age=60, deceased=False),
+        dict(source="nhif", key="NHIF-10006", relationship="mother", relationship_code="MTH",
+             condition_code="I10", condition_text="Essential hypertension",
+             onset_age=58, deceased=False),
+    ]
+
+
 def main():
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -198,9 +229,13 @@ def main():
         for r in rows:
             f.write("|".join(str(v) for v in r.values()) + "\n")
 
+    fh_path = RAW_DIR / "family_history.json"
+    fh_path.write_text(json.dumps(family_history_rows(), indent=2))
+
     print(f"Wrote {nhif_path}")
     print(f"Wrote {facb_path}")
     print(f"Wrote {facc_path}")
+    print(f"Wrote {fh_path}")
 
 
 if __name__ == "__main__":

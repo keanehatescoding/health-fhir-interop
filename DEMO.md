@@ -31,7 +31,22 @@ per person/source relationship) — one of them, Susan Nyambura Kariuki's
 Facility B consent, is deliberately `deny` to exercise the consent-gating
 path: identity matching still links NHIF↔Facility B for her, but
 `query_api.apply_consent_filter` withholds Facility B's clinical resources
-from her unified view at query time.
+from her unified view at query time. Also 4 `FamilyMemberHistory` resources
+and 3 derived `RiskAssessment` resources — see "Family history & hereditary
+risk" below.
+
+### Family history & hereditary risk
+
+`data/raw/family_history.json` carries NHIF-intake family history for 3
+people (Grace, Mary, David) who do **not** already have the hereditary
+condition themselves — so the risk suggestion is new information, not a
+restatement of an existing diagnosis. `matching/build_fhir_bundles.py`
+turns each relative/condition into a `FamilyMemberHistory` resource, then
+runs a small keyword-matched lookup table (`RISK_RULES`) to derive one
+`RiskAssessment` per person: an `outcome` (the condition), a
+`qualitativeRisk` (low/moderate/high), and a `rationale` with a screening
+suggestion. This is a hackathon-scale stand-in for real hereditary risk
+scoring, not a clinical model — say so if asked.
 
 ## floci (local AWS emulator) — for iterating on the S3 upload step
 
@@ -100,7 +115,16 @@ straight to a specific demo scenario without clicking through the picker.
    withheld-notice explaining that 3 Facility B records are excluded because
    she never consented to that source being shared — directly answers "does
    this respect patient consent, or does it just merge everything?"
-4. (Optional) Switch `HEALTHLAKE_MODE=real` and re-run the "After" call
+4. Switch to **David Kiprotich Rono** to show hereditary risk suggestion:
+   his own record is just a single lower-back-pain claim — no diabetes or
+   hypertension diagnosis anywhere in it — but the "Family History &
+   Hereditary Risk" card below the timeline flags both as elevated risks
+   (father: type 2 diabetes → high risk; mother: hypertension → moderate
+   risk), each with a plain-language rationale and a screening suggestion.
+   Answers "can this surface things a patient hasn't been diagnosed with
+   yet, from data spread across their family's records" — this is the
+   `FamilyMemberHistory`/`RiskAssessment` FHIR resources, not free text.
+5. (Optional) Switch `HEALTHLAKE_MODE=real` and re-run the "After" call
    live against the real HealthLake data store, or open the AWS Console
    FHIR data browser, to prove it's a real managed store.
 
@@ -109,5 +133,7 @@ straight to a specific demo scenario without clicking through the picker.
 - Synthetic data, 9 people — not a claim of production readiness.
 - Matching uses fixed-weight heuristics (national ID exact match, else
   phone/DOB/name fuzzy score), not a validated MPI model.
+- Hereditary risk is a small keyword-matched lookup table (condition name ->
+  suggested screening), not a validated clinical risk model.
 - floci never touches HealthLake itself — only the S3/IAM pieces around it
   are locally emulated; the import and query steps always require real AWS.
