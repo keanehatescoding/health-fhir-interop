@@ -119,14 +119,15 @@ function renderAfter(bundle) {
   ).join('');
 
   const timeline = resources
-    .filter(r => r.resourceType !== 'Patient')
+    // Encounter carries no info beyond what Condition/Observation/Claim
+    // already show for the same visit, so skip it as its own row.
+    .filter(r => r.resourceType !== 'Patient' && r.resourceType !== 'Encounter')
     .map(r => {
-      let date = (r.period && r.period.start) || r.created || '';
+      let date = (r.period && r.period.start) || r.created || r.recordedDate || r.effectiveDateTime || '';
       let label = (r.code && r.code.text) || r.resourceType;
       let detail = '';
       if (r.resourceType === 'Observation') detail = r.valueString || '';
-      if (r.resourceType === 'Claim') detail = `KES ${r.total.value} claim (${r.resourceType})`;
-      if (r.resourceType === 'Encounter') { label = 'Encounter'; }
+      if (r.resourceType === 'Claim') detail = `KES ${r.total.value} claim`;
       return { date, label, detail, type: r.resourceType };
     })
     .filter(e => e.date)

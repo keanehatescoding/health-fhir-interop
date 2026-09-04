@@ -109,12 +109,13 @@ def build_encounter(person_id, source, source_key, visit_date, res_id):
     )
 
 
-def build_condition(person_id, encounter_id, code, text, res_id):
+def build_condition(person_id, encounter_id, code, text, res_id, visit_date):
     return Condition(
         id=res_id,
         subject={"reference": f"Patient/{person_id}"},
         encounter={"reference": f"Encounter/{encounter_id}"},
         code={"coding": [{"code": code}] if code else [], "text": text},
+        recordedDate=_iso_date(visit_date),
     )
 
 
@@ -163,7 +164,7 @@ def main():
         encounters.append(build_encounter(person_id, "nhif", row["nhif_member_no"], row["service_date"], enc_id))
         conditions.append(build_condition(
             person_id, enc_id, row["diagnosis_code"], row["procedure_desc"],
-            resource_id("condition", "nhif", row["claim_id"]),
+            resource_id("condition", "nhif", row["claim_id"]), row["service_date"],
         ))
         claims.append(build_claim(
             person_id, row["claim_id"], row["service_date"], row["amount_kes"], row["claim_status"],
@@ -177,7 +178,7 @@ def main():
             encounters.append(build_encounter(person_id, "facility_b", p["mrn"], visit["visitDate"], enc_id))
             conditions.append(build_condition(
                 person_id, enc_id, visit["diagnosis"]["code"], visit["diagnosis"]["text"],
-                resource_id("condition", "facility_b", p["mrn"], str(i)),
+                resource_id("condition", "facility_b", p["mrn"], str(i)), visit["visitDate"],
             ))
             observations.append(Observation(
                 id=resource_id("observation", "facility_b", p["mrn"], str(i)),
@@ -185,6 +186,7 @@ def main():
                 code={"text": "Clinical note"},
                 subject={"reference": f"Patient/{person_id}"},
                 encounter={"reference": f"Encounter/{enc_id}"},
+                effectiveDateTime=_iso_date(visit["visitDate"]),
                 valueString=visit["notes"],
             ))
 
@@ -194,7 +196,7 @@ def main():
         encounters.append(build_encounter(person_id, "facility_c", row["patient_code"], row["visit_date"], enc_id))
         conditions.append(build_condition(
             person_id, enc_id, None, row["diagnosis_text"],
-            resource_id("condition", "facility_c", row["patient_code"]),
+            resource_id("condition", "facility_c", row["patient_code"]), row["visit_date"],
         ))
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
