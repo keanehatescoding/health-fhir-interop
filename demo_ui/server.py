@@ -8,12 +8,22 @@ Serves:
                                      or already-reviewed "possible match" links
   GET  /api/patients/<id>/after  -> the unified timeline from the query layer
                                      (query_api.healthlake_query), mock or real
-                                     depending on HEALTHLAKE_MODE
+                                     depending on HEALTHLAKE_MODE; also logs a
+                                     FHIR AuditEvent for this view
+  GET  /api/patients/<id>/audit  -> that person's audit trail (who viewed the
+                                     unified record and when, plus any review
+                                     decisions made about them)
   POST /api/review-decisions     -> approve (merge) or reject (keep separate)
                                      a flagged pair; rebuilds the whole
                                      matching+FHIR pipeline in-process so the
-                                     decision is reflected immediately
+                                     decision is reflected immediately, and
+                                     logs a FHIR AuditEvent for the decision
   GET  /                         -> the static demo page
+
+"Who did this" comes from the X-Demo-Actor header the UI's "Viewing as"
+selector sends -- there's no real auth in this demo, but every view/decision
+is still attributable and logged, which is the property that matters for a
+health-data audit trail.
 
 Run: python -m demo_ui.server
 """
@@ -23,6 +33,7 @@ import pathlib
 
 from flask import Flask, jsonify, request, send_from_directory
 
+from audit import audit_log
 from matching.rebuild import rebuild
 from matching.review_decisions import save_decision
 from query_api.healthlake_query import apply_consent_filter, get_patient_everything
@@ -131,6 +142,7 @@ def patient_before(person_id):
 def review_decision():
     data = request.get_json(force=True)
     person_id_a, person_id_b, decision = data["person_id_a"], data["person_id_b"], data["decision"]
+    actor = request.headers.get("X-Demo-Actor", "Unknown viewer")
 
     # figure out where person_id_a's records end up after the merge, so the
     # frontend can reselect the right (possibly new, merged) person_id
@@ -149,14 +161,26 @@ def review_decision():
                 new_person_id = c["person_id"]
                 break
 
+    # log against both pre-decision ids and (if merged) the resulting
+    # canonical id, so the decision shows up in whichever id gets viewed next
+    audit_ids = {person_id_a, person_id_b, new_person_id}
+    audit_log.record_review_decision(list(audit_ids), actor, decision)
+
     return jsonify({"decision": decision, "person_id": new_person_id})
 
 
 @app.get("/api/patients/<person_id>/after")
 def patient_after(person_id):
+    actor = request.headers.get("X-Demo-Actor", "Unknown viewer")
     bundle = get_patient_everything(person_id)
     filtered_bundle, withheld = apply_consent_filter(bundle)
+    audit_log.record_view(person_id, actor, withheld)
     return jsonify({"bundle": filtered_bundle, "withheld": withheld})
+
+
+@app.get("/api/patients/<person_id>/audit")
+def patient_audit(person_id):
+    return jsonify(audit_log.get_trail(person_id))
 
 
 @app.get("/")

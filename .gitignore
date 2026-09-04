@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 .env
 .env.real
+data/audit_log.ndjson
 *.egg-info/
 .DS_Store

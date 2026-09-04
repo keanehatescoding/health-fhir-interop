@@ -46,6 +46,17 @@
   .risk-badge.risk-high { background: #fee2e2; color: var(--review); }
   .risk-badge.risk-moderate { background: #fef3c7; color: #92400e; }
   .risk-badge.risk-low { background: #ecfdf5; color: var(--after); }
+  .header-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .header-controls label { font-size: 12px; color: var(--muted); }
+  .audit-card { border-color: #bfdbfe; }
+  .audit-row { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .audit-row:last-child { border-bottom: none; }
+  .audit-time { color: var(--muted); font-family: ui-monospace, monospace; font-size: 11px; white-space: nowrap; }
+  .audit-actor { font-weight: 600; flex-shrink: 0; }
+  .audit-action-badge { font-size: 10px; padding: 1px 7px; border-radius: 999px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
+  .audit-action-badge.read { background: #dbeafe; color: #1d4ed8; }
+  .audit-action-badge.update { background: #ede9fe; color: #6d28d9; }
+  .audit-desc { color: var(--muted); }
   .field-row { font-size: 13px; color: var(--muted); margin: 2px 0; }
   .field-row b { color: var(--text); font-weight: 600; }
   .event { border-left: 2px solid var(--border); padding: 6px 0 6px 12px; margin: 8px 0; font-size: 13px; }
@@ -62,7 +73,16 @@
     <h1>Portable Medical History &mdash; NHIF &amp; Private Facility Unification</h1>
     <p>Prototype: AWS HealthLake as the interoperability layer. Synthetic data only.</p>
   </div>
-  <select id="patient-picker"></select>
+  <div class="header-controls">
+    <label for="actor-picker">Viewing as</label>
+    <select id="actor-picker">
+      <option>Data Steward (MPI review)</option>
+      <option>NHIF Claims Officer</option>
+      <option>Facility B Physician</option>
+      <option>Facility C Nurse</option>
+    </select>
+    <select id="patient-picker"></select>
+  </div>
 </header>
 <main>
   <div class="review-banner" id="review-banner"></div>
@@ -76,12 +96,17 @@
       <div id="after-panel"></div>
     </div>
   </div>
+  <div class="card audit-card" id="audit-panel"></div>
 </main>
 <script>
 const picker = document.getElementById('patient-picker');
+const actorPicker = document.getElementById('actor-picker');
 const beforePanel = document.getElementById('before-panel');
 const afterPanel = document.getElementById('after-panel');
 const reviewBanner = document.getElementById('review-banner');
+const auditPanel = document.getElementById('audit-panel');
+
+actorPicker.addEventListener('change', () => { if (picker.value) loadPatient(picker.value); });
 
 async function loadPatients(preferredId) {
   const res = await fetch('/api/patients');
@@ -102,20 +127,44 @@ picker.addEventListener('change', () => loadPatient(picker.value));
 async function loadPatient(personId) {
   const [beforeRes, afterRes] = await Promise.all([
     fetch(`/api/patients/${personId}/before`).then(r => r.json()),
-    fetch(`/api/patients/${personId}/after`).then(r => r.json()),
+    fetch(`/api/patients/${personId}/after`, { headers: { 'X-Demo-Actor': actorPicker.value } }).then(r => r.json()),
   ]);
   renderBefore(beforeRes);
   renderAfter(afterRes);
+  // fetched after before/after so it picks up the "viewed" event they just caused
+  const auditRes = await fetch(`/api/patients/${personId}/audit`).then(r => r.json());
+  renderAudit(auditRes);
 }
 
 async function decideReview(personIdA, personIdB, decision) {
   const res = await fetch('/api/review-decisions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Demo-Actor': actorPicker.value },
     body: JSON.stringify({ person_id_a: personIdA, person_id_b: personIdB, decision }),
   });
   const result = await res.json();
   await loadPatients(result.person_id);
+}
+
+function renderAudit(events) {
+  if (!events.length) {
+    auditPanel.innerHTML = '<h3>Access &amp; Audit Trail</h3><div class="empty">No recorded access yet</div>';
+    return;
+  }
+  const rows = events.map(e => {
+    const entity = (e.entity || [])[0] || {};
+    const actor = (e.agent && e.agent[0] && e.agent[0].who && e.agent[0].who.display) || 'Unknown';
+    const kind = e.action === 'R' ? 'read' : 'update';
+    const label = e.action === 'R' ? 'Viewed' : 'Decision';
+    const time = (e.recorded || '').replace('T', ' ').slice(0, 19) + ' UTC';
+    return `<div class="audit-row">
+      <span class="audit-time">${time}</span>
+      <span class="audit-action-badge ${kind}">${label}</span>
+      <span class="audit-actor">${actor}</span>
+      <span class="audit-desc">${entity.description || ''}</span>
+    </div>`;
+  }).join('');
+  auditPanel.innerHTML = `<h3>Access &amp; Audit Trail</h3>${rows}`;
 }
 
 function renderBefore(data) {
