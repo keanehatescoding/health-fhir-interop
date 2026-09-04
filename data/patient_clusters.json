@@ -1,0 +1,179 @@
+{
+  "clusters": [
+    {
+      "person_id": "5d3b518d-c1ce-5aa5-a2b1-23218c82fa1c",
+      "members": [
+        {
+          "source": "nhif",
+          "key": "NHIF-10001",
+          "name": "Grace Wanjiru Njeri",
+          "dob": "1990-05-14",
+          "phone": "0722100001",
+          "national_id": "23456789"
+        },
+        {
+          "source": "facility_b",
+          "key": "AKUH-2024-00931",
+          "name": "Grace W. Njeri",
+          "dob": "1990-05-14",
+          "phone": "+254722100001",
+          "national_id": "23456789"
+        },
+        {
+          "source": "facility_c",
+          "key": "CLX-7001",
+          "name": "Grace Wanjiru",
+          "dob": "14/05/1990",
+          "phone": "0722-100-001",
+          "national_id": null
+        }
+      ]
+    },
+    {
+      "person_id": "6acf3c28-ea8f-5944-832d-6fff11064e3e",
+      "members": [
+        {
+          "source": "nhif",
+          "key": "NHIF-10002",
+          "name": "John Otieno Omondi",
+          "dob": "1982-02-11",
+          "phone": "0733200002",
+          "national_id": "31122334"
+        },
+        {
+          "source": "facility_b",
+          "key": "AKUH-2024-00877",
+          "name": "John O. Omondi",
+          "dob": "1982-02-11",
+          "phone": "+254733200002",
+          "national_id": "31122334"
+        }
+      ]
+    },
+    {
+      "person_id": "f95540bb-052d-5d01-911f-21119176ddb3",
+      "members": [
+        {
+          "source": "nhif",
+          "key": "NHIF-10003",
+          "name": "Mary Achieng Odhiambo",
+          "dob": "1985-09-01",
+          "phone": "0733200003",
+          "national_id": "40556677"
+        },
+        {
+          "source": "facility_c",
+          "key": "CLX-7003",
+          "name": "Mary Achieng",
+          "dob": "01/09/1985",
+          "phone": "0733-200-003",
+          "national_id": null
+        }
+      ]
+    },
+    {
+      "person_id": "b2c5cf81-336f-575d-8a0b-77175c9464d5",
+      "members": [
+        {
+          "source": "nhif",
+          "key": "NHIF-10005",
+          "name": "Susan Nyambura Kariuki",
+          "dob": "1988-03-22",
+          "phone": "0700500005",
+          "national_id": "60778899"
+        },
+        {
+          "source": "facility_b",
+          "key": "AKUH-2024-01450",
+          "name": "Susan N. Kariuki",
+          "dob": "22/03/1988",
+          "phone": "+254700500005",
+          "national_id": "60778899"
+        }
+      ]
+    },
+    {
+      "person_id": "db48f1c1-ee22-5e7a-9467-771275185717",
+      "members": [
+        {
+          "source": "nhif",
+          "key": "NHIF-10006",
+          "name": "David Kiprotich Rono",
+          "dob": "1975-11-02",
+          "phone": "0722600006",
+          "national_id": "70889900"
+        }
+      ]
+    },
+    {
+      "person_id": "d85c2a83-11ed-5395-b83c-85d3e4c7bed0",
+      "members": [
+        {
+          "source": "nhif",
+          "key": "NHIF-10009",
+          "name": "James Mutisya Kyalo",
+          "dob": "1980-02-08",
+          "phone": "0755900009",
+          "national_id": "99001122"
+        }
+      ]
+    },
+    {
+      "person_id": "52a1ed29-5b0b-5fb6-b2a4-3c084cdf97ff",
+      "members": [
+        {
+          "source": "facility_b",
+          "key": "AKUH-2024-01203",
+          "name": "Peter Kamau Mwangi",
+          "dob": "1978-12-20",
+          "phone": "+254711300004",
+          "national_id": "55667788"
+        },
+        {
+          "source": "facility_c",
+          "key": "CLX-7004",
+          "name": "Peter K. Mwangi",
+          "dob": "20/12/1978",
+          "phone": "0711-300-004",
+          "national_id": null
+        }
+      ]
+    },
+    {
+      "person_id": "12eeda5f-9a37-5a46-b972-94fd5802155e",
+      "members": [
+        {
+          "source": "facility_b",
+          "key": "AKUH-2024-01888",
+          "name": "Alice Wambui Gitau",
+          "dob": "1992-07-18",
+          "phone": "+254733700007",
+          "national_id": "81990011"
+        }
+      ]
+    },
+    {
+      "person_id": "2d172d3c-55e0-5de8-9380-e26e6e47c746",
+      "members": [
+        {
+          "source": "facility_c",
+          "key": "CLX-7008",
+          "name": "James Mutisya Kyalo",
+          "dob": "08/02/1980",
+          "phone": "0744-800-008",
+          "national_id": null
+        }
+      ]
+    }
+  ],
+  "possible_links": [
+    {
+      "person_id_a": "d85c2a83-11ed-5395-b83c-85d3e4c7bed0",
+      "person_id_b": "2d172d3c-55e0-5de8-9380-e26e6e47c746",
+      "record_a": "nhif:NHIF-10009",
+      "record_b": "facility_c:CLX-7008",
+      "method": "fuzzy",
+      "score": 0.6
+    }
+  ]
+}

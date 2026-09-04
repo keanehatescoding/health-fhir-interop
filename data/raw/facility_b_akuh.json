@@ -1,0 +1,107 @@
+[
+  {
+    "mrn": "AKUH-2024-00931",
+    "demographics": {
+      "name": "Grace W. Njeri",
+      "dateOfBirth": "1990-05-14",
+      "sex": "F",
+      "nationalIdNumber": "23456789",
+      "contactPhone": "+254722100001"
+    },
+    "visits": [
+      {
+        "visitDate": "2024-08-20",
+        "chiefComplaint": "Follow-up on blood sugar control",
+        "diagnosis": {
+          "code": "E11.9",
+          "text": "Type 2 diabetes mellitus"
+        },
+        "notes": "Patient reports improved adherence to metformin. HbA1c trending down."
+      }
+    ]
+  },
+  {
+    "mrn": "AKUH-2024-00877",
+    "demographics": {
+      "name": "John O. Omondi",
+      "dateOfBirth": "1982-02-11",
+      "sex": "M",
+      "nationalIdNumber": "31122334",
+      "contactPhone": "+254733200002"
+    },
+    "visits": [
+      {
+        "visitDate": "2024-09-02",
+        "chiefComplaint": "Chest tightness on exertion",
+        "diagnosis": {
+          "code": "I10",
+          "text": "Essential hypertension"
+        },
+        "notes": "BP 148/94. Advised lifestyle changes, started amlodipine 5mg."
+      }
+    ]
+  },
+  {
+    "mrn": "AKUH-2024-01203",
+    "demographics": {
+      "name": "Peter Kamau Mwangi",
+      "dateOfBirth": "1978-12-20",
+      "sex": "M",
+      "nationalIdNumber": "55667788",
+      "contactPhone": "+254711300004"
+    },
+    "visits": [
+      {
+        "visitDate": "2024-03-15",
+        "chiefComplaint": "Persistent cough for 3 weeks",
+        "diagnosis": {
+          "code": "A15.0",
+          "text": "Pulmonary tuberculosis"
+        },
+        "notes": "Sputum test positive. Started on TB treatment regimen."
+      }
+    ]
+  },
+  {
+    "mrn": "AKUH-2024-01450",
+    "demographics": {
+      "name": "Susan N. Kariuki",
+      "dateOfBirth": "22/03/1988",
+      "sex": "F",
+      "nationalIdNumber": "60778899",
+      "contactPhone": "+254700500005"
+    },
+    "visits": [
+      {
+        "visitDate": "2024-10-11",
+        "chiefComplaint": "Recurrent UTI symptoms",
+        "diagnosis": {
+          "code": "N39.0",
+          "text": "Urinary tract infection"
+        },
+        "notes": "Third episode this year. Referred for urology review."
+      }
+    ]
+  },
+  {
+    "mrn": "AKUH-2024-01888",
+    "demographics": {
+      "name": "Alice Wambui Gitau",
+      "dateOfBirth": "1992-07-18",
+      "sex": "F",
+      "nationalIdNumber": "81990011",
+      "contactPhone": "+254733700007"
+    },
+    "visits": [
+      {
+        "visitDate": "2024-11-04",
+        "chiefComplaint": "Annual wellness check",
+        "diagnosis": {
+          "code": "Z00.0",
+          "text": "General medical examination"
+        },
+        "notes": "No abnormal findings. Routine bloodwork ordered."
+      }
+    ]
+  }
+]

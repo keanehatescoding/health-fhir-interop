@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Portable Medical History Demo</title>
+<style>
+  :root {
+    --bg: #f5f7fa; --panel: #ffffff; --border: #dde3ea; --text: #1c2530;
+    --muted: #6b7684; --accent: #2563eb; --before: #b45309; --after: #15803d;
+    --review: #b91c1c; --review-bg: #fef2f2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 20px 28px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  select { font-size: 14px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); min-width: 260px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 28px 60px; }
+  .review-banner { display: none; background: var(--review-bg); border: 1px solid var(--review); color: var(--review); padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .columns { grid-template-columns: 1fr; } }
+  .col-title { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; margin-bottom: 12px; }
+  .col-title.before { color: var(--before); }
+  .col-title.after { color: var(--after); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  .card h3 { margin: 0 0 8px; font-size: 14px; }
+  .id-badge { display: inline-block; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-family: ui-monospace, monospace; margin: 2px 4px 2px 0; }
+  .id-badge.mismatch { background: #fff7ed; color: var(--before); }
+  .field-row { font-size: 13px; color: var(--muted); margin: 2px 0; }
+  .field-row b { color: var(--text); font-weight: 600; }
+  .event { border-left: 2px solid var(--border); padding: 6px 0 6px 12px; margin: 8px 0; font-size: 13px; }
+  .event .date { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; }
+  .event .label { font-weight: 600; }
+  .event .detail { color: var(--muted); }
+  .unified-card { border: 2px solid var(--after); }
+  .empty { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Portable Medical History &mdash; NHIF &amp; Private Facility Unification</h1>
+    <p>Prototype: AWS HealthLake as the interoperability layer. Synthetic data only.</p>
+  </div>
+  <select id="patient-picker"></select>
+</header>
+<main>
+  <div class="review-banner" id="review-banner"></div>
+  <div class="columns">
+    <div>
+      <div class="col-title before">Before &mdash; siloed records, mismatched IDs</div>
+      <div id="before-panel"></div>
+    </div>
+    <div>
+      <div class="col-title after">After &mdash; one unified patient timeline</div>
+      <div id="after-panel"></div>
+    </div>
+  </div>
+</main>
+<script>
+const picker = document.getElementById('patient-picker');
+const beforePanel = document.getElementById('before-panel');
+const afterPanel = document.getElementById('after-panel');
+const reviewBanner = document.getElementById('review-banner');
+
+async function loadPatients() {
+  const res = await fetch('/api/patients');
+  const people = await res.json();
+  picker.innerHTML = people.map(p =>
+    `<option value="${p.person_id}">${p.display_name} (${p.sources.length} source${p.sources.length>1?'s':''}${p.flagged_for_review?' - flagged':''})</option>`
+  ).join('');
+  if (people.length) loadPatient(people[0].person_id);
+}
+
+picker.addEventListener('change', () => loadPatient(picker.value));
+
+async function loadPatient(personId) {
+  const [beforeRes, afterRes] = await Promise.all([
+    fetch(`/api/patients/${personId}/before`).then(r => r.json()),
+    fetch(`/api/patients/${personId}/after`).then(r => r.json()),
+  ]);
+  renderBefore(beforeRes);
+  renderAfter(afterRes);
+}
+
+function renderBefore(data) {
+  if (data.possible_links && data.possible_links.length) {
+    reviewBanner.style.display = 'block';
+    reviewBanner.innerHTML = data.possible_links.map(l =>
+      `&#9888; Possible match with another record (similarity score ${l.score}) &mdash; NOT auto-merged, flagged for human review (FHIR <code>Patient.link</code> type=<code>seealso</code>).`
+    ).join('<br>');
+  } else {
+    reviewBanner.style.display = 'none';
+  }
+
+  beforePanel.innerHTML = data.records.map(rec => {
+    const idFields = Object.entries(rec.identity).filter(([k]) => k !== 'name' && k !== 'full_name' && k !== 'dob' && k !== 'phone');
+    const badges = idFields.map(([k, v]) => v ? `<span class="id-badge mismatch">${k}: ${v}</span>` : '').join('');
+    const events = rec.events.map(e =>
+      `<div class="event"><div class="date">${e.date}</div><div class="label">${e.label}</div><div class="detail">${e.detail}</div></div>`
+    ).join('');
+    return `<div class="card">
+      <h3>${rec.source}</h3>
+      <div>${badges}</div>
+      <div class="field-row"><b>Name:</b> ${rec.identity.name || rec.identity.full_name}</div>
+      <div class="field-row"><b>DOB:</b> ${rec.identity.dob} &nbsp; <b>Phone:</b> ${rec.identity.phone}</div>
+      ${events}
+    </div>`;
+  }).join('') || '<div class="empty">No records</div>';
+}
+
+function renderAfter(bundle) {
+  const resources = (bundle.entry || []).map(e => e.resource);
+  const patient = resources.find(r => r.resourceType === 'Patient');
+  if (!patient) { afterPanel.innerHTML = '<div class="empty">No unified record yet</div>'; return; }
+
+  const idBadges = (patient.identifier || []).map(i =>
+    `<span class="id-badge">${i.system.split('/').slice(-2).join('/')}: ${i.value}</span>`
+  ).join('');
+
+  const timeline = resources
+    .filter(r => r.resourceType !== 'Patient')
+    .map(r => {
+      let date = (r.period && r.period.start) || r.created || '';
+      let label = (r.code && r.code.text) || r.resourceType;
+      let detail = '';
+      if (r.resourceType === 'Observation') detail = r.valueString || '';
+      if (r.resourceType === 'Claim') detail = `KES ${r.total.value} claim (${r.resourceType})`;
+      if (r.resourceType === 'Encounter') { label = 'Encounter'; }
+      return { date, label, detail, type: r.resourceType };
+    })
+    .filter(e => e.date)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const timelineHtml = timeline.map(e =>
+    `<div class="event"><div class="date">${e.date} &middot; ${e.type}</div><div class="label">${e.label}</div><div class="detail">${e.detail}</div></div>`
+  ).join('');
+
+  afterPanel.innerHTML = `<div class="card unified-card">
+    <h3>${patient.name[0].text} &mdash; one canonical record</h3>
+    <div>${idBadges}</div>
+    <div class="field-row"><b>DOB:</b> ${patient.birthDate || '-'}</div>
+    ${timelineHtml || '<div class="empty">No linked clinical events</div>'}
+  </div>`;
+}
+
+loadPatients();
+</script>
+</body>
+</html>
