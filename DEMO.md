@@ -86,7 +86,14 @@ straight to a specific demo scenario without clicking through the picker.
 2. Switch to **James Mutisya Kyalo** to show the flagged review case: two
    people with the same name and DOB, correctly kept as separate records
    linked via FHIR `Patient.link` (`type=seealso`) rather than blindly
-   merged — the human-review path.
+   merged — the human-review path. Click **Reject (keep separate)** to show
+   a data steward confirming they're distinct (banner turns green, stays
+   informational, no more buttons) — or click **Approve merge** instead to
+   show the opposite call: the two records merge into one canonical
+   `Patient` with both sources, live, no pipeline restart needed (the
+   decision is saved to `data/review_decisions.json` and the whole
+   matching+FHIR pipeline rebuilds in-process). Either action is fully
+   reversible by posting the opposite decision for the same pair.
 3. Switch to **Susan Nyambura Kariuki** to show consent enforcement: her
    "Before" panel shows a red "sharing DENIED" badge on her Facility B card,
    and her "After" panel shows NHIF matched and merged as normal but a red

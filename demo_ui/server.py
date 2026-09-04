@@ -1,14 +1,19 @@
 """Minimal Flask backend for the demo UI.
 
 Serves:
-  GET /api/patients             -> list of resolved people (for the picker)
-  GET /api/patients/<id>/before -> raw siloed records for that person, as they
-                                    exist in each original source (mismatched
-                                    ID schemes, on purpose)
-  GET /api/patients/<id>/after  -> the unified timeline from the query layer
-                                    (query_api.healthlake_query), mock or real
-                                    depending on HEALTHLAKE_MODE
-  GET /                         -> the static demo page
+  GET  /api/patients             -> list of resolved people (for the picker)
+  GET  /api/patients/<id>/before -> raw siloed records for that person, as they
+                                     exist in each original source (mismatched
+                                     ID schemes, on purpose), plus any pending
+                                     or already-reviewed "possible match" links
+  GET  /api/patients/<id>/after  -> the unified timeline from the query layer
+                                     (query_api.healthlake_query), mock or real
+                                     depending on HEALTHLAKE_MODE
+  POST /api/review-decisions     -> approve (merge) or reject (keep separate)
+                                     a flagged pair; rebuilds the whole
+                                     matching+FHIR pipeline in-process so the
+                                     decision is reflected immediately
+  GET  /                         -> the static demo page
 
 Run: python -m demo_ui.server
 """
@@ -16,8 +21,10 @@ import csv
 import json
 import pathlib
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
+from matching.rebuild import rebuild
+from matching.review_decisions import save_decision
 from query_api.healthlake_query import apply_consent_filter, get_patient_everything
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -104,13 +111,45 @@ def patient_before(person_id):
 
     records = [raw_by_key[(m["source"], m["key"])] for m in cluster["members"]]
 
-    links = [
-        {"person_id": (l["person_id_b"] if l["person_id_a"] == person_id else l["person_id_a"]),
-         "score": l["score"]}
-        for l in clusters.get("possible_links", [])
-        if person_id in (l["person_id_a"], l["person_id_b"])
-    ]
-    return jsonify({"records": records, "possible_links": links})
+    def links_for(pool):
+        return [
+            {"person_id_a": l["person_id_a"], "person_id_b": l["person_id_b"],
+             "other_person_id": (l["person_id_b"] if l["person_id_a"] == person_id else l["person_id_a"]),
+             "score": l["score"]}
+            for l in clusters.get(pool, [])
+            if person_id in (l["person_id_a"], l["person_id_b"])
+        ]
+
+    return jsonify({
+        "records": records,
+        "possible_links": links_for("possible_links"),
+        "reviewed_links": links_for("reviewed_links"),
+    })
+
+
+@app.post("/api/review-decisions")
+def review_decision():
+    data = request.get_json(force=True)
+    person_id_a, person_id_b, decision = data["person_id_a"], data["person_id_b"], data["decision"]
+
+    # figure out where person_id_a's records end up after the merge, so the
+    # frontend can reselect the right (possibly new, merged) person_id
+    clusters_before = load_clusters()
+    cluster_a = next((c for c in clusters_before["clusters"] if c["person_id"] == person_id_a), None)
+    member_keys = {(m["source"], m["key"]) for m in (cluster_a["members"] if cluster_a else [])}
+
+    save_decision(person_id_a, person_id_b, decision)
+    rebuild()
+
+    new_person_id = person_id_a
+    if decision == "approve":
+        clusters_after = load_clusters()
+        for c in clusters_after["clusters"]:
+            if any((m["source"], m["key"]) in member_keys for m in c["members"]):
+                new_person_id = c["person_id"]
+                break
+
+    return jsonify({"decision": decision, "person_id": new_person_id})
 
 
 @app.get("/api/patients/<person_id>/after")

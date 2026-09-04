@@ -9,8 +9,15 @@ Stage 2 (probabilistic, for sources lacking a national id): weighted score on
                                   human review (mirrors FHIR Patient.link type=seealso)
         score < 0.5           -> distinct people
 
+Stage 3 (human review): any recorded decision in data/review_decisions.json
+(written by demo_ui/server.py's approve/reject action) is applied on top of
+the above -- "approve" merges the two clusters into one (same as an
+auto-link), "reject" removes the pair from possible_links into
+reviewed_links (informational only, no longer flagged, no Patient.link).
+
 Run: python matching/match_patients.py
-Reads:  data/raw/nhif_claims.csv, data/raw/facility_b_akuh.json, data/raw/facility_c_clinic.txt
+Reads:  data/raw/nhif_claims.csv, data/raw/facility_b_akuh.json, data/raw/facility_c_clinic.txt,
+        data/review_decisions.json
 Writes: data/patient_clusters.json
 """
 import csv
@@ -22,6 +29,7 @@ from itertools import combinations
 from rapidfuzz import fuzz
 
 from matching.normalize import normalize_dob, normalize_name, normalize_national_id, normalize_phone
+from matching.review_decisions import as_map as load_decisions_map
 
 DATA_DIR = pathlib.Path(__file__).resolve().parent.parent / "data"
 RAW_DIR = DATA_DIR / "raw"
@@ -160,7 +168,44 @@ def match():
         if record_to_person_id[(a.source, a.key)] != record_to_person_id[(b.source, b.key)]
     ]
 
-    return {"clusters": clusters, "possible_links": possible_link_out}
+    clusters, possible_link_out, reviewed_link_out = apply_review_decisions(
+        clusters, possible_link_out, load_decisions_map(),
+    )
+
+    return {"clusters": clusters, "possible_links": possible_link_out, "reviewed_links": reviewed_link_out}
+
+
+def apply_review_decisions(clusters, possible_links, decisions_map):
+    """Applies human approve/reject decisions on top of the automatic match.
+    "approve" merges the two clusters (same effect as an auto fuzzy-link);
+    "reject" moves the pair out of possible_links into reviewed_links
+    (informational: reviewed, confirmed distinct, no longer flagged)."""
+    clusters_by_id = {c["person_id"]: c for c in clusters}
+    id_remap = {}
+
+    def resolve(pid):
+        while pid in id_remap:
+            pid = id_remap[pid]
+        return pid
+
+    remaining, reviewed = [], []
+    for link in possible_links:
+        decision = decisions_map.get(frozenset((link["person_id_a"], link["person_id_b"])))
+        a, b = resolve(link["person_id_a"]), resolve(link["person_id_b"])
+        if decision == "approve" and a in clusters_by_id and b in clusters_by_id and a != b:
+            cluster_a, cluster_b = clusters_by_id.pop(a), clusters_by_id.pop(b)
+            merged_members = cluster_a["members"] + cluster_b["members"]
+            seed = ",".join(sorted(f"{m['source']}:{m['key']}" for m in merged_members))
+            new_id = str(uuid.uuid5(PERSON_ID_NAMESPACE, seed))
+            clusters_by_id[new_id] = {"person_id": new_id, "members": merged_members}
+            id_remap[a] = new_id
+            id_remap[b] = new_id
+        elif decision == "reject":
+            reviewed.append({**link, "review_decision": "reject"})
+        else:
+            remaining.append(link)
+
+    return list(clusters_by_id.values()), remaining, reviewed
 
 
 def main():
@@ -177,6 +222,8 @@ def main():
         print(f"  MERGED  {c['person_id'][:8]}...  <- {sources}")
     for link in result["possible_links"]:
         print(f"  REVIEW  {link['record_a']} <-> {link['record_b']}  score={link['score']} (NOT merged)")
+    for link in result.get("reviewed_links", []):
+        print(f"  REJECTED (by review)  {link['record_a']} <-> {link['record_b']}  kept separate")
 
 
 if __name__ == "__main__":
