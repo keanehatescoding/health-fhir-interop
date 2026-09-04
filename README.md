@@ -1,5 +1,7 @@
 # Portable Medical History via AWS HealthLake
 
+[![Validate FHIR bundles](https://github.com/keanehatescoding/health-fhir-interop/actions/workflows/validate-bundles.yml/badge.svg)](https://github.com/keanehatescoding/health-fhir-interop/actions/workflows/validate-bundles.yml)
+
 Hackathon prototype: patients in Kenya lack a portable medical history — NHIF
 (the national insurer) and each private facility keep siloed records under
 their own patient identifiers, so a patient's history doesn't follow them
