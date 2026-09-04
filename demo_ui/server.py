@@ -18,7 +18,7 @@ import pathlib
 
 from flask import Flask, jsonify, send_from_directory
 
-from query_api.healthlake_query import get_patient_everything
+from query_api.healthlake_query import apply_consent_filter, get_patient_everything
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -40,6 +40,7 @@ def load_raw_by_key():
             entry = raw.setdefault(key, {
                 "source": "NHIF (national insurer)",
                 "identity": {k: row[k] for k in ("nhif_member_no", "national_id", "full_name", "dob", "phone")},
+                "consent": row["consent_to_share"],
                 "events": [],
             })
             entry["events"].append({
@@ -54,6 +55,7 @@ def load_raw_by_key():
             "source": "Facility B - AKUH-style private hospital",
             "identity": {"mrn": p["mrn"], "national_id": d.get("nationalIdNumber"),
                          "name": d["name"], "dob": d["dateOfBirth"], "phone": d["contactPhone"]},
+            "consent": d["consentToShare"],
             "events": [
                 {"date": v["visitDate"], "label": v["diagnosis"]["text"], "detail": v["notes"]}
                 for v in p["visits"]
@@ -66,6 +68,7 @@ def load_raw_by_key():
                 "source": "Facility C - independent clinic (no national ID captured)",
                 "identity": {"patient_code": row["patient_code"], "name": row["full_name"],
                              "dob": row["dob"], "phone": row["phone"]},
+                "consent": row["consent"],
                 "events": [{"date": row["visit_date"], "label": row["diagnosis_text"], "detail": ""}],
             }
     return raw
@@ -112,7 +115,9 @@ def patient_before(person_id):
 
 @app.get("/api/patients/<person_id>/after")
 def patient_after(person_id):
-    return jsonify(get_patient_everything(person_id))
+    bundle = get_patient_everything(person_id)
+    filtered_bundle, withheld = apply_consent_filter(bundle)
+    return jsonify({"bundle": filtered_bundle, "withheld": withheld})
 
 
 @app.get("/")

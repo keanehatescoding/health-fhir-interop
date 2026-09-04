@@ -26,7 +26,7 @@ load_dotenv(".env")
 load_dotenv(".env.real", override=True)
 
 FHIR_READY_DIR = pathlib.Path(__file__).resolve().parent.parent / "data" / "fhir_ready"
-_RESOURCE_TYPES = ["Patient", "Encounter", "Condition", "Observation", "MedicationRequest", "Claim"]
+_RESOURCE_TYPES = ["Patient", "Encounter", "Condition", "Observation", "MedicationRequest", "Claim", "Consent"]
 
 
 def _mode():
@@ -104,6 +104,44 @@ def find_patient_by_identifier(system: str, value: str) -> dict:
     if _mode() == "mock":
         return _mock_find_by_identifier(system, value)
     return _signed_get(f"{_real_endpoint()}/Patient", params={"identifier": f"{system}|{value}"})
+
+
+def apply_consent_filter(bundle: dict) -> dict:
+    """Enforces per-source consent on a $everything bundle: any non-Patient,
+    non-Consent resource whose meta.source matches a source with a "deny"
+    Consent is removed. Returns (filtered_bundle, withheld_summary) where
+    withheld_summary is a list of {"source", "organization", "count"} for
+    what got excluded -- so the UI can say WHY data is missing instead of
+    silently showing less.
+
+    This is deliberately NOT done inside get_patient_everything(): the FHIR
+    store (real or mocked) holds everything HealthLake actually has; consent
+    enforcement is an application-layer concern in front of it, same as a
+    real interoperability platform's API gateway would do.
+    """
+    entries = bundle.get("entry", [])
+    resources = [e["resource"] for e in entries]
+
+    denied_sources = {}
+    for r in resources:
+        if r["resourceType"] == "Consent" and r.get("provision", {}).get("type") == "deny":
+            source = (r.get("meta") or {}).get("source", "")
+            org = (r.get("organization") or [{}])[0].get("display", source)
+            denied_sources[source] = org
+
+    kept, withheld_counts = [], {}
+    for r in resources:
+        source = (r.get("meta") or {}).get("source", "")
+        if r["resourceType"] not in ("Patient", "Consent") and source in denied_sources:
+            withheld_counts[source] = withheld_counts.get(source, 0) + 1
+            continue
+        kept.append(r)
+
+    withheld = [
+        {"source": source, "organization": denied_sources[source], "count": count}
+        for source, count in withheld_counts.items()
+    ]
+    return _bundle(kept), withheld
 
 
 if __name__ == "__main__":

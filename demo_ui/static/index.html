@@ -26,6 +26,9 @@
   .card h3 { margin: 0 0 8px; font-size: 14px; }
   .id-badge { display: inline-block; background: #eef2ff; color: #3730a3; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-family: ui-monospace, monospace; margin: 2px 4px 2px 0; }
   .id-badge.mismatch { background: #fff7ed; color: var(--before); }
+  .id-badge.consent-permit { background: #ecfdf5; color: var(--after); font-family: inherit; }
+  .id-badge.consent-deny { background: var(--review-bg); color: var(--review); font-family: inherit; font-weight: 600; }
+  .withheld-notice { background: var(--review-bg); color: var(--review); border: 1px solid var(--review); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 10px 0; }
   .field-row { font-size: 13px; color: var(--muted); margin: 2px 0; }
   .field-row b { color: var(--text); font-weight: 600; }
   .event { border-left: 2px solid var(--border); padding: 6px 0 6px 12px; margin: 8px 0; font-size: 13px; }
@@ -69,7 +72,11 @@ async function loadPatients() {
   picker.innerHTML = people.map(p =>
     `<option value="${p.person_id}">${p.display_name} (${p.sources.length} source${p.sources.length>1?'s':''}${p.flagged_for_review?' - flagged':''})</option>`
   ).join('');
-  if (people.length) loadPatient(people[0].person_id);
+  // ?patient=<id> deep-links directly to one patient's before/after view.
+  const requested = new URLSearchParams(location.search).get('patient');
+  const initial = (requested && people.some(p => p.person_id === requested))
+    ? requested : (people[0] && people[0].person_id);
+  if (initial) { picker.value = initial; loadPatient(initial); }
 }
 
 picker.addEventListener('change', () => loadPatient(picker.value));
@@ -96,11 +103,14 @@ function renderBefore(data) {
   beforePanel.innerHTML = data.records.map(rec => {
     const idFields = Object.entries(rec.identity).filter(([k]) => k !== 'name' && k !== 'full_name' && k !== 'dob' && k !== 'phone');
     const badges = idFields.map(([k, v]) => v ? `<span class="id-badge mismatch">${k}: ${v}</span>` : '').join('');
+    const consentClass = rec.consent === 'permit' ? 'consent-permit' : 'consent-deny';
+    const consentLabel = rec.consent === 'permit' ? 'Consent: share permitted' : 'Consent: sharing DENIED';
     const events = rec.events.map(e =>
       `<div class="event"><div class="date">${e.date}</div><div class="label">${e.label}</div><div class="detail">${e.detail}</div></div>`
     ).join('');
     return `<div class="card">
       <h3>${rec.source}</h3>
+      <div><span class="id-badge ${consentClass}">${consentLabel}</span></div>
       <div>${badges}</div>
       <div class="field-row"><b>Name:</b> ${rec.identity.name || rec.identity.full_name}</div>
       <div class="field-row"><b>DOB:</b> ${rec.identity.dob} &nbsp; <b>Phone:</b> ${rec.identity.phone}</div>
@@ -109,7 +119,7 @@ function renderBefore(data) {
   }).join('') || '<div class="empty">No records</div>';
 }
 
-function renderAfter(bundle) {
+function renderAfter({ bundle, withheld }) {
   const resources = (bundle.entry || []).map(e => e.resource);
   const patient = resources.find(r => r.resourceType === 'Patient');
   if (!patient) { afterPanel.innerHTML = '<div class="empty">No unified record yet</div>'; return; }
@@ -118,10 +128,20 @@ function renderAfter(bundle) {
     `<span class="id-badge">${i.system.split('/').slice(-2).join('/')}: ${i.value}</span>`
   ).join('');
 
+  const consents = resources.filter(r => r.resourceType === 'Consent');
+  const consentBadges = consents.map(c => {
+    const permitted = c.provision.type === 'permit';
+    return `<span class="id-badge ${permitted ? 'consent-permit' : 'consent-deny'}">${c.organization[0].display}: ${permitted ? 'permitted' : 'DENIED'}</span>`;
+  }).join('');
+
+  const withheldHtml = (withheld || []).map(w =>
+    `<div class="withheld-notice">&#128274; ${w.count} record${w.count > 1 ? 's' : ''} from ${w.organization} withheld &mdash; patient did not consent to sharing this source.</div>`
+  ).join('');
+
   const timeline = resources
-    // Encounter carries no info beyond what Condition/Observation/Claim
-    // already show for the same visit, so skip it as its own row.
-    .filter(r => r.resourceType !== 'Patient' && r.resourceType !== 'Encounter')
+    // Encounter/Consent carry no info beyond what's already shown elsewhere
+    // (Condition/Observation/Claim for the visit, the consent badges above).
+    .filter(r => !['Patient', 'Encounter', 'Consent'].includes(r.resourceType))
     .map(r => {
       let date = (r.period && r.period.start) || r.created || r.recordedDate || r.effectiveDateTime || '';
       let label = (r.code && r.code.text) || r.resourceType;
@@ -141,6 +161,9 @@ function renderAfter(bundle) {
     <h3>${patient.name[0].text} &mdash; one canonical record</h3>
     <div>${idBadges}</div>
     <div class="field-row"><b>DOB:</b> ${patient.birthDate || '-'}</div>
+    <div class="field-row"><b>Consent per source:</b></div>
+    <div>${consentBadges}</div>
+    ${withheldHtml}
     ${timelineHtml || '<div class="empty">No linked clinical events</div>'}
   </div>`;
 }

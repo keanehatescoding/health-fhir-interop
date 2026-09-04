@@ -1,8 +1,8 @@
-nhif_member_no,national_id,full_name,dob,gender,phone,claim_id,facility_name,service_date,diagnosis_code,procedure_desc,amount_kes,claim_status
-NHIF-10001,23456789,Grace Wanjiru Njeri,1990-05-14,F,0722100001,CLM-30001,Nairobi West Hospital,2024-01-10,E11.9,Diabetes review,4500,PAID
-NHIF-10001,23456789,Grace Wanjiru Njeri,1990-05-14,F,0722100001,CLM-30002,Nairobi West Hospital,2024-06-02,J06.9,Upper respiratory infection,1800,PAID
-NHIF-10002,31122334,John Otieno Omondi,1982-02-11,M,0733200002,CLM-30003,Kisumu County Hospital,2024-03-05,I10,Hypertension checkup,2500,PAID
-NHIF-10003,40556677,Mary Achieng Odhiambo,1985-09-01,F,0733200003,CLM-30004,Nyanza Provincial Hospital,2024-02-14,O26.9,Antenatal checkup,3000,PAID
-NHIF-10005,60778899,Susan Nyambura Kariuki,1988-03-22,F,0700500005,CLM-30005,Thika Level 5 Hospital,2024-04-18,N39.0,UTI treatment,2200,PAID
-NHIF-10006,70889900,David Kiprotich Rono,1975-11-02,M,0722600006,CLM-30006,Eldoret Referral Hospital,2024-05-09,M54.5,Lower back pain,1500,PAID
-NHIF-10009,99001122,James Mutisya Kyalo,1980-02-08,M,0755900009,CLM-30007,Machakos Level 5 Hospital,2024-07-01,J45.9,Asthma review,2000,PAID
+nhif_member_no,national_id,full_name,dob,gender,phone,claim_id,facility_name,service_date,diagnosis_code,procedure_desc,amount_kes,claim_status,consent_to_share
+NHIF-10001,23456789,Grace Wanjiru Njeri,1990-05-14,F,0722100001,CLM-30001,Nairobi West Hospital,2024-01-10,E11.9,Diabetes review,4500,PAID,permit
+NHIF-10001,23456789,Grace Wanjiru Njeri,1990-05-14,F,0722100001,CLM-30002,Nairobi West Hospital,2024-06-02,J06.9,Upper respiratory infection,1800,PAID,permit
+NHIF-10002,31122334,John Otieno Omondi,1982-02-11,M,0733200002,CLM-30003,Kisumu County Hospital,2024-03-05,I10,Hypertension checkup,2500,PAID,permit
+NHIF-10003,40556677,Mary Achieng Odhiambo,1985-09-01,F,0733200003,CLM-30004,Nyanza Provincial Hospital,2024-02-14,O26.9,Antenatal checkup,3000,PAID,permit
+NHIF-10005,60778899,Susan Nyambura Kariuki,1988-03-22,F,0700500005,CLM-30005,Thika Level 5 Hospital,2024-04-18,N39.0,UTI treatment,2200,PAID,permit
+NHIF-10006,70889900,David Kiprotich Rono,1975-11-02,M,0722600006,CLM-30006,Eldoret Referral Hospital,2024-05-09,M54.5,Lower back pain,1500,PAID,permit
+NHIF-10009,99001122,James Mutisya Kyalo,1980-02-08,M,0755900009,CLM-30007,Machakos Level 5 Hospital,2024-07-01,J45.9,Asthma review,2000,PAID,permit

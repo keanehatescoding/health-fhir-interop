@@ -1,5 +1,5 @@
-patient_code|full_name|dob|phone|visit_date|diagnosis_text
-CLX-7001|Grace Wanjiru|14/05/1990|0722-100-001|2025-01-08|Mild flu symptoms, prescribed rest and fluids
-CLX-7003|Mary Achieng|01/09/1985|0733-200-003|2025-01-15|Routine antenatal follow-up, all normal
-CLX-7004|Peter K. Mwangi|20/12/1978|0711-300-004|2025-02-02|TB medication refill, tolerating treatment well
-CLX-7008|James Mutisya Kyalo|08/02/1980|0744-800-008|2025-02-20|Minor laceration on left hand, cleaned and dressed
+patient_code|full_name|dob|phone|visit_date|diagnosis_text|consent
+CLX-7001|Grace Wanjiru|14/05/1990|0722-100-001|2025-01-08|Mild flu symptoms, prescribed rest and fluids|permit
+CLX-7003|Mary Achieng|01/09/1985|0733-200-003|2025-01-15|Routine antenatal follow-up, all normal|permit
+CLX-7004|Peter K. Mwangi|20/12/1978|0711-300-004|2025-02-02|TB medication refill, tolerating treatment well|permit
+CLX-7008|James Mutisya Kyalo|08/02/1980|0744-800-008|2025-02-20|Minor laceration on left hand, cleaned and dressed|permit

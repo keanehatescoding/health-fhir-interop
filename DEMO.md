@@ -26,7 +26,12 @@ python -m matching.validate_bundles          # FHIR R4B validation before any up
 
 Expected: 9 distinct people, 5 merged multi-source clusters, 1 pair flagged
 "needs review" (James Mutisya Kyalo, NHIF vs Facility C — same name/DOB,
-different phone, correctly NOT auto-merged).
+different phone, correctly NOT auto-merged), and 15 `Consent` resources (one
+per person/source relationship) — one of them, Susan Nyambura Kariuki's
+Facility B consent, is deliberately `deny` to exercise the consent-gating
+path: identity matching still links NHIF↔Facility B for her, but
+`query_api.apply_consent_filter` withholds Facility B's clinical resources
+from her unified view at query time.
 
 ## floci (local AWS emulator) — for iterating on the S3 upload step
 
@@ -65,6 +70,10 @@ resources built above straight from `data/fhir_ready/*.ndjson` — the whole
 demo works with zero AWS cost/latency, and is the safe fallback if the live
 AWS call ever misbehaves mid-pitch.
 
+`?patient=<person_id>` deep-links directly to one patient's before/after
+view (person IDs are listed by `GET /api/patients`) — handy for jumping
+straight to a specific demo scenario without clicking through the picker.
+
 ## Live demo flow
 
 1. Picker defaults to **Grace Wanjiru Njeri** (the "hero" patient, all 3 sources).
@@ -78,7 +87,13 @@ AWS call ever misbehaves mid-pitch.
    people with the same name and DOB, correctly kept as separate records
    linked via FHIR `Patient.link` (`type=seealso`) rather than blindly
    merged — the human-review path.
-3. (Optional) Switch `HEALTHLAKE_MODE=real` and re-run the "After" call
+3. Switch to **Susan Nyambura Kariuki** to show consent enforcement: her
+   "Before" panel shows a red "sharing DENIED" badge on her Facility B card,
+   and her "After" panel shows NHIF matched and merged as normal but a red
+   withheld-notice explaining that 3 Facility B records are excluded because
+   she never consented to that source being shared — directly answers "does
+   this respect patient consent, or does it just merge everything?"
+4. (Optional) Switch `HEALTHLAKE_MODE=real` and re-run the "After" call
    live against the real HealthLake data store, or open the AWS Console
    FHIR data browser, to prove it's a real managed store.
 

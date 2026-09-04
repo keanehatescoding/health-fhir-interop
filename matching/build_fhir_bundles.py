@@ -15,10 +15,20 @@ The "possible_links" band from matching (score 0.5-0.75, not auto-merged)
 becomes a Patient.link entry of type "seealso" on both sides -- FHIR's own
 mechanism for "probably the same person, needs human review".
 
+Every clinical resource is tagged Resource.meta.source = "urn:source:<source>"
+(the standard FHIR field for provenance), and one Consent resource is built
+per (person, source) recording whether that source may be shared into the
+unified record. Identity matching still links a "deny" source's records to
+the right canonical Patient (the platform must still know it's the same
+person) -- consent only gates what the query layer surfaces, applied in
+query_api/healthlake_query.py, not what gets ingested. This mirrors how real
+interoperability platforms work: the FHIR store holds everything; access
+control is enforced at the application layer in front of it.
+
 Run: python matching/build_fhir_bundles.py
 Reads:  data/patient_clusters.json, data/raw/*
 Writes: data/fhir_ready/Patient.ndjson, Encounter.ndjson, Condition.ndjson,
-        Observation.ndjson, MedicationRequest.ndjson, Claim.ndjson
+        Observation.ndjson, Claim.ndjson, Consent.ndjson
 """
 import csv
 import json
@@ -27,6 +37,7 @@ import uuid
 
 from fhir.resources.R4B.claim import Claim
 from fhir.resources.R4B.condition import Condition
+from fhir.resources.R4B.consent import Consent
 from fhir.resources.R4B.encounter import Encounter
 from fhir.resources.R4B.observation import Observation
 from fhir.resources.R4B.patient import Patient
@@ -42,7 +53,17 @@ IDENTIFIER_SYSTEMS = {
     "national_id": "http://nationalregistration.go.ke/id",
 }
 
+SOURCE_ORG_DISPLAY = {
+    "nhif": "NHIF (national insurer)",
+    "facility_b": "Facility B - AKUH-style private hospital",
+    "facility_c": "Facility C - independent clinic",
+}
+
 RESOURCE_NAMESPACE = uuid.UUID("6f9c3e2a-0000-4000-8000-000000000002")
+
+
+def source_meta(source):
+    return {"source": f"urn:source:{source}"}
 
 
 def resource_id(*parts):
@@ -102,6 +123,7 @@ def _iso_date(value):
 def build_encounter(person_id, source, source_key, visit_date, res_id):
     return Encounter(
         id=res_id,
+        meta=source_meta(source),
         status="finished",
         class_fhir={"system": "http://terminology.hl7.org/CodeSystem/v3-ActCode", "code": "AMB"},
         subject={"reference": f"Patient/{person_id}"},
@@ -109,9 +131,10 @@ def build_encounter(person_id, source, source_key, visit_date, res_id):
     )
 
 
-def build_condition(person_id, encounter_id, code, text, res_id, visit_date):
+def build_condition(person_id, source, encounter_id, code, text, res_id, visit_date):
     return Condition(
         id=res_id,
+        meta=source_meta(source),
         subject={"reference": f"Patient/{person_id}"},
         encounter={"reference": f"Encounter/{encounter_id}"},
         code={"coding": [{"code": code}] if code else [], "text": text},
@@ -119,9 +142,10 @@ def build_condition(person_id, encounter_id, code, text, res_id, visit_date):
     )
 
 
-def build_claim(person_id, claim_id, service_date, amount, status, res_id):
+def build_claim(person_id, source, claim_id, service_date, amount, status, res_id):
     return Claim(
         id=res_id,
+        meta=source_meta(source),
         status="active",
         type={"coding": [{"code": "institutional"}]},
         use="claim",
@@ -131,6 +155,22 @@ def build_claim(person_id, claim_id, service_date, amount, status, res_id):
         priority={"coding": [{"code": "normal"}]},
         total={"value": float(amount), "currency": "KES"},
         insurance=[{"sequence": 1, "focal": True, "coverage": {"display": "NHIF"}}],
+    )
+
+
+def build_consent(person_id, source, consent_value, date, res_id):
+    return Consent(
+        id=res_id,
+        meta=source_meta(source),
+        status="active" if consent_value == "permit" else "rejected",
+        scope={"coding": [{"system": "http://terminology.hl7.org/CodeSystem/consentscope",
+                            "code": "patient-privacy"}]},
+        category=[{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/consentcategorycodes",
+                                "code": "INFA", "display": "Information Access"}]}],
+        patient={"reference": f"Patient/{person_id}"},
+        dateTime=_iso_date(date),
+        organization=[{"display": SOURCE_ORG_DISPLAY[source]}],
+        provision={"type": consent_value},
     )
 
 
@@ -151,7 +191,18 @@ def main():
         review_links.setdefault(link["person_id_a"], set()).add(link["person_id_b"])
         review_links.setdefault(link["person_id_b"], set()).add(link["person_id_a"])
 
-    patients, encounters, conditions, observations, claims = [], [], [], [], []
+    patients, encounters, conditions, observations, claims, consents = [], [], [], [], [], []
+    # dedupe consent to one Consent resource per (person, source), keyed by
+    # the first record seen for that relationship
+    consent_seen = {}
+
+    def note_consent(source, key, person_id, consent_value, date):
+        dedup_key = (person_id, source)
+        if dedup_key not in consent_seen:
+            consent_seen[dedup_key] = True
+            consents.append(build_consent(
+                person_id, source, consent_value, date, resource_id("consent", source, key),
+            ))
 
     for c in clusters["clusters"]:
         national_id = key_to_national_id.get(c["person_id"])
@@ -163,25 +214,29 @@ def main():
         enc_id = resource_id("encounter", "nhif", row["claim_id"])
         encounters.append(build_encounter(person_id, "nhif", row["nhif_member_no"], row["service_date"], enc_id))
         conditions.append(build_condition(
-            person_id, enc_id, row["diagnosis_code"], row["procedure_desc"],
+            person_id, "nhif", enc_id, row["diagnosis_code"], row["procedure_desc"],
             resource_id("condition", "nhif", row["claim_id"]), row["service_date"],
         ))
         claims.append(build_claim(
-            person_id, row["claim_id"], row["service_date"], row["amount_kes"], row["claim_status"],
+            person_id, "nhif", row["claim_id"], row["service_date"], row["amount_kes"], row["claim_status"],
             resource_id("claim", "nhif", row["claim_id"]),
         ))
+        note_consent("nhif", row["nhif_member_no"], person_id, row["consent_to_share"], row["service_date"])
 
     for p in facb:
         person_id = key_to_person[("facility_b", p["mrn"])]
+        note_consent("facility_b", p["mrn"], person_id, p["demographics"]["consentToShare"],
+                      p["visits"][0]["visitDate"] if p["visits"] else None)
         for i, visit in enumerate(p["visits"]):
             enc_id = resource_id("encounter", "facility_b", p["mrn"], str(i))
             encounters.append(build_encounter(person_id, "facility_b", p["mrn"], visit["visitDate"], enc_id))
             conditions.append(build_condition(
-                person_id, enc_id, visit["diagnosis"]["code"], visit["diagnosis"]["text"],
+                person_id, "facility_b", enc_id, visit["diagnosis"]["code"], visit["diagnosis"]["text"],
                 resource_id("condition", "facility_b", p["mrn"], str(i)), visit["visitDate"],
             ))
             observations.append(Observation(
                 id=resource_id("observation", "facility_b", p["mrn"], str(i)),
+                meta=source_meta("facility_b"),
                 status="final",
                 code={"text": "Clinical note"},
                 subject={"reference": f"Patient/{person_id}"},
@@ -195,9 +250,10 @@ def main():
         enc_id = resource_id("encounter", "facility_c", row["patient_code"])
         encounters.append(build_encounter(person_id, "facility_c", row["patient_code"], row["visit_date"], enc_id))
         conditions.append(build_condition(
-            person_id, enc_id, None, row["diagnosis_text"],
+            person_id, "facility_c", enc_id, None, row["diagnosis_text"],
             resource_id("condition", "facility_c", row["patient_code"]), row["visit_date"],
         ))
+        note_consent("facility_c", row["patient_code"], person_id, row["consent"], row["visit_date"])
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     _write_ndjson("Patient", patients)
@@ -205,9 +261,11 @@ def main():
     _write_ndjson("Condition", conditions)
     _write_ndjson("Observation", observations)
     _write_ndjson("Claim", claims)
+    _write_ndjson("Consent", consents)
 
     print(f"Patients: {len(patients)}, Encounters: {len(encounters)}, "
-          f"Conditions: {len(conditions)}, Observations: {len(observations)}, Claims: {len(claims)}")
+          f"Conditions: {len(conditions)}, Observations: {len(observations)}, Claims: {len(claims)}, "
+          f"Consents: {len(consents)}")
     print(f"Wrote NDJSON bundles to {OUT_DIR}")
 
 

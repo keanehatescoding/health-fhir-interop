@@ -6,7 +6,8 @@
       "dateOfBirth": "1990-05-14",
       "sex": "F",
       "nationalIdNumber": "23456789",
-      "contactPhone": "+254722100001"
+      "contactPhone": "+254722100001",
+      "consentToShare": "permit"
     },
     "visits": [
       {
@@ -27,7 +28,8 @@
       "dateOfBirth": "1982-02-11",
       "sex": "M",
       "nationalIdNumber": "31122334",
-      "contactPhone": "+254733200002"
+      "contactPhone": "+254733200002",
+      "consentToShare": "permit"
     },
     "visits": [
       {
@@ -48,7 +50,8 @@
       "dateOfBirth": "1978-12-20",
       "sex": "M",
       "nationalIdNumber": "55667788",
-      "contactPhone": "+254711300004"
+      "contactPhone": "+254711300004",
+      "consentToShare": "permit"
     },
     "visits": [
       {
@@ -69,7 +72,8 @@
       "dateOfBirth": "22/03/1988",
       "sex": "F",
       "nationalIdNumber": "60778899",
-      "contactPhone": "+254700500005"
+      "contactPhone": "+254700500005",
+      "consentToShare": "deny"
     },
     "visits": [
       {
@@ -90,7 +94,8 @@
       "dateOfBirth": "1992-07-18",
       "sex": "F",
       "nationalIdNumber": "81990011",
-      "contactPhone": "+254733700007"
+      "contactPhone": "+254733700007",
+      "consentToShare": "permit"
     },
     "visits": [
       {
