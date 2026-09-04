@@ -89,6 +89,21 @@ AWS call ever misbehaves mid-pitch.
 view (person IDs are listed by `GET /api/patients`) — handy for jumping
 straight to a specific demo scenario without clicking through the picker.
 
+Every unified-record view and review-queue decision is logged live as a
+FHIR `AuditEvent` (`audit/audit_log.py` -> gitignored
+`data/audit_log.ndjson`, kept outside `data/fhir_ready/` since it's
+operational access data, not clinical content), attributed to whatever
+actor the "Viewing as" selector is set to. Each patient's "Access & Audit
+Trail" card at the bottom of their "After" view shows that patient's trail.
+
+**Population Overview** (toggle button, top left) switches from the
+single-patient before/after view to an aggregate dashboard across all
+resolved people: total/multi-source/single-source counts, pending vs
+reviewed identity-match reviews, consent denials (who withheld sharing from
+which source), and the hereditary risk breakdown (condition × risk level ×
+number of people) — served by `GET /api/dashboard`, aggregated server-side
+from `data/patient_clusters.json` and `data/fhir_ready/*.ndjson`.
+
 ## Live demo flow
 
 1. Picker defaults to **Grace Wanjiru Njeri** (the "hero" patient, all 3 sources).
@@ -124,7 +139,12 @@ straight to a specific demo scenario without clicking through the picker.
    Answers "can this surface things a patient hasn't been diagnosed with
    yet, from data spread across their family's records" — this is the
    `FamilyMemberHistory`/`RiskAssessment` FHIR resources, not free text.
-5. (Optional) Switch `HEALTHLAKE_MODE=real` and re-run the "After" call
+5. Click **Population Overview** to zoom out from the single-patient view:
+   9 people / 5 unified / 4 single-source, 1 pending match review, Susan's
+   consent denial, and the 4-condition hereditary risk breakdown, all in one
+   screen — answers "does this scale past a single patient demo, or is it
+   just per-record plumbing?"
+6. (Optional) Switch `HEALTHLAKE_MODE=real` and re-run the "After" call
    live against the real HealthLake data store, or open the AWS Console
    FHIR data browser, to prove it's a real managed store.
 

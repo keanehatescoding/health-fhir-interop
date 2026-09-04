@@ -13,6 +13,8 @@ Serves:
   GET  /api/patients/<id>/audit  -> that person's audit trail (who viewed the
                                      unified record and when, plus any review
                                      decisions made about them)
+  GET  /api/dashboard            -> population-level aggregates across all
+                                     resolved people (matching, consent, risk)
   POST /api/review-decisions     -> approve (merge) or reject (keep separate)
                                      a flagged pair; rebuilds the whole
                                      matching+FHIR pipeline in-process so the
@@ -41,6 +43,7 @@ from query_api.healthlake_query import apply_consent_filter, get_patient_everyth
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"
+FHIR_READY_DIR = DATA_DIR / "fhir_ready"
 STATIC_DIR = pathlib.Path(__file__).resolve().parent / "static"
 
 app = Flask(__name__, static_folder=None)
@@ -48,6 +51,13 @@ app = Flask(__name__, static_folder=None)
 
 def load_clusters():
     return json.loads((DATA_DIR / "patient_clusters.json").read_text())
+
+
+def load_fhir(resource_type):
+    path = FHIR_READY_DIR / f"{resource_type}.ndjson"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
 def load_raw_by_key():
@@ -181,6 +191,50 @@ def patient_after(person_id):
 @app.get("/api/patients/<person_id>/audit")
 def patient_audit(person_id):
     return jsonify(audit_log.get_trail(person_id))
+
+
+@app.get("/api/dashboard")
+def dashboard():
+    clusters_data = load_clusters()
+    clusters = clusters_data["clusters"]
+    people_by_id = {c["person_id"]: c for c in clusters}
+
+    multi_source = sum(1 for c in clusters if len({m["source"] for m in c["members"]}) > 1)
+
+    denials = []
+    for consent in load_fhir("Consent"):
+        if consent.get("provision", {}).get("type") != "deny":
+            continue
+        person_id = consent["patient"]["reference"].split("/")[-1]
+        person = people_by_id.get(person_id)
+        denials.append({
+            "person_id": person_id,
+            "display_name": person["members"][0]["name"] if person else person_id,
+            "organization": consent["organization"][0]["display"],
+        })
+
+    risk_flagged_people = set()
+    risk_counts = {}
+    for ra in load_fhir("RiskAssessment"):
+        risk_flagged_people.add(ra["subject"]["reference"].split("/")[-1])
+        for prediction in ra.get("prediction", []):
+            key = (prediction["outcome"]["text"], prediction["qualitativeRisk"]["coding"][0]["code"])
+            risk_counts[key] = risk_counts.get(key, 0) + 1
+    risk_breakdown = sorted(
+        [{"outcome": outcome, "risk": risk, "count": count} for (outcome, risk), count in risk_counts.items()],
+        key=lambda r: (-r["count"], r["outcome"]),
+    )
+
+    return jsonify({
+        "total_people": len(clusters),
+        "multi_source_people": multi_source,
+        "single_source_people": len(clusters) - multi_source,
+        "pending_review": len(clusters_data.get("possible_links", [])),
+        "reviewed_matches": len(clusters_data.get("reviewed_links", [])),
+        "consent_denials": denials,
+        "risk_flagged_people": len(risk_flagged_people),
+        "risk_breakdown": risk_breakdown,
+    })
 
 
 @app.get("/")

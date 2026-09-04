@@ -65,6 +65,21 @@
   .event .detail { color: var(--muted); }
   .unified-card { border: 2px solid var(--after); }
   .empty { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
+  .view-toggle { display: flex; gap: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+  .view-toggle button { font-size: 13px; padding: 6px 14px; border: none; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-weight: 600; }
+  .view-toggle button.active { background: var(--panel); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+  .stat-box .stat-value { font-size: 28px; font-weight: 700; }
+  .stat-box .stat-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .stat-box.warn .stat-value { color: var(--review); }
+  .stat-box.ok .stat-value { color: var(--after); }
+  .dash-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 860px) { .dash-columns { grid-template-columns: 1fr; } }
+  .dash-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .dash-row:last-child { border-bottom: none; }
+  .dash-row .name { font-weight: 600; }
+  .dash-row .meta { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -74,6 +89,10 @@
     <p>Prototype: AWS HealthLake as the interoperability layer. Synthetic data only.</p>
   </div>
   <div class="header-controls">
+    <div class="view-toggle" id="view-toggle">
+      <button type="button" class="active" data-view="patient">Patient View</button>
+      <button type="button" data-view="population">Population Overview</button>
+    </div>
     <label for="actor-picker">Viewing as</label>
     <select id="actor-picker">
       <option>Data Steward (MPI review)</option>
@@ -85,18 +104,33 @@
   </div>
 </header>
 <main>
-  <div class="review-banner" id="review-banner"></div>
-  <div class="columns">
-    <div>
-      <div class="col-title before">Before &mdash; siloed records, mismatched IDs</div>
-      <div id="before-panel"></div>
+  <div id="patient-view">
+    <div class="review-banner" id="review-banner"></div>
+    <div class="columns">
+      <div>
+        <div class="col-title before">Before &mdash; siloed records, mismatched IDs</div>
+        <div id="before-panel"></div>
+      </div>
+      <div>
+        <div class="col-title after">After &mdash; one unified patient timeline</div>
+        <div id="after-panel"></div>
+      </div>
     </div>
-    <div>
-      <div class="col-title after">After &mdash; one unified patient timeline</div>
-      <div id="after-panel"></div>
+    <div class="card audit-card" id="audit-panel"></div>
+  </div>
+  <div id="population-view" style="display:none;">
+    <div class="stat-grid" id="dash-stats"></div>
+    <div class="dash-columns">
+      <div>
+        <div class="col-title before">Consent Denials</div>
+        <div class="card" id="dash-denials"></div>
+      </div>
+      <div>
+        <div class="col-title after">Hereditary Risk Breakdown</div>
+        <div class="card" id="dash-risk"></div>
+      </div>
     </div>
   </div>
-  <div class="card audit-card" id="audit-panel"></div>
 </main>
 <script>
 const picker = document.getElementById('patient-picker');
@@ -105,8 +139,60 @@ const beforePanel = document.getElementById('before-panel');
 const afterPanel = document.getElementById('after-panel');
 const reviewBanner = document.getElementById('review-banner');
 const auditPanel = document.getElementById('audit-panel');
+const patientView = document.getElementById('patient-view');
+const populationView = document.getElementById('population-view');
+const viewToggle = document.getElementById('view-toggle');
+const dashStats = document.getElementById('dash-stats');
+const dashDenials = document.getElementById('dash-denials');
+const dashRisk = document.getElementById('dash-risk');
 
 actorPicker.addEventListener('change', () => { if (picker.value) loadPatient(picker.value); });
+
+viewToggle.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-view]');
+  if (!btn) return;
+  [...viewToggle.children].forEach(b => b.classList.toggle('active', b === btn));
+  if (btn.dataset.view === 'population') {
+    patientView.style.display = 'none';
+    populationView.style.display = 'block';
+    loadDashboard();
+  } else {
+    populationView.style.display = 'none';
+    patientView.style.display = 'block';
+  }
+});
+
+async function loadDashboard() {
+  const res = await fetch('/api/dashboard');
+  renderDashboard(await res.json());
+}
+
+function renderDashboard(d) {
+  dashStats.innerHTML = `
+    <div class="stat-box"><div class="stat-value">${d.total_people}</div><div class="stat-label">Total people</div></div>
+    <div class="stat-box ok"><div class="stat-value">${d.multi_source_people}</div><div class="stat-label">Multi-source (unified)</div></div>
+    <div class="stat-box"><div class="stat-value">${d.single_source_people}</div><div class="stat-label">Single-source</div></div>
+    <div class="stat-box ${d.pending_review ? 'warn' : ''}"><div class="stat-value">${d.pending_review}</div><div class="stat-label">Pending match review</div></div>
+    <div class="stat-box"><div class="stat-value">${d.reviewed_matches}</div><div class="stat-label">Reviewed matches</div></div>
+    <div class="stat-box ${d.risk_flagged_people ? 'warn' : ''}"><div class="stat-value">${d.risk_flagged_people}</div><div class="stat-label">Risk-flagged people</div></div>
+  `;
+
+  dashDenials.innerHTML = d.consent_denials.length
+    ? d.consent_denials.map(c => `
+        <div class="dash-row">
+          <span class="name">${c.display_name}</span>
+          <span class="meta">withheld from ${c.organization}</span>
+        </div>`).join('')
+    : '<div class="empty">No consent denials on record</div>';
+
+  dashRisk.innerHTML = d.risk_breakdown.length
+    ? d.risk_breakdown.map(r => `
+        <div class="dash-row">
+          <span class="name">${r.outcome}</span>
+          <span><span class="risk-badge risk-${r.risk}">${r.risk} risk</span> &nbsp; <span class="meta">${r.count} ${r.count === 1 ? 'person' : 'people'}</span></span>
+        </div>`).join('')
+    : '<div class="empty">No hereditary risk predictions on record</div>';
+}
 
 async function loadPatients(preferredId) {
   const res = await fetch('/api/patients');
