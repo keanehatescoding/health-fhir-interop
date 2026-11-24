@@ -31,6 +31,7 @@ Run: python -m demo_ui.server
 """
 import csv
 import json
+import os
 import pathlib
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -248,4 +249,6 @@ def static_files(filename):
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    # The Werkzeug debugger allows remote code execution; keep it opt-in for local use only.
+    debug = os.environ.get("DEBUG", "").strip().lower() in ("1", "true", "yes")
+    app.run(debug=debug, port=int(os.environ.get("PORT", "5000")))
