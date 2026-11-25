@@ -190,8 +190,15 @@ def apply_review_decisions(clusters, possible_links, decisions_map):
 
     remaining, reviewed = [], []
     for link in possible_links:
-        decision = decisions_map.get(frozenset((link["person_id_a"], link["person_id_b"])))
-        a, b = resolve(link["person_id_a"]), resolve(link["person_id_b"])
+        orig_a, orig_b = link["person_id_a"], link["person_id_b"]
+        decision = decisions_map.get(frozenset((orig_a, orig_b)))
+        a, b = resolve(orig_a), resolve(orig_b)
+        if decision is None:
+            decision = decisions_map.get(frozenset((a, b)))
+        # A prior merge in this pass may already have folded one endpoint into
+        # the other's cluster; such a pair is no longer a "possible link".
+        if a == b:
+            continue
         if decision == "approve" and a in clusters_by_id and b in clusters_by_id and a != b:
             cluster_a, cluster_b = clusters_by_id.pop(a), clusters_by_id.pop(b)
             merged_members = cluster_a["members"] + cluster_b["members"]
@@ -201,9 +208,9 @@ def apply_review_decisions(clusters, possible_links, decisions_map):
             id_remap[a] = new_id
             id_remap[b] = new_id
         elif decision == "reject":
-            reviewed.append({**link, "review_decision": "reject"})
+            reviewed.append({**link, "person_id_a": a, "person_id_b": b, "review_decision": "reject"})
         else:
-            remaining.append(link)
+            remaining.append({**link, "person_id_a": a, "person_id_b": b})
 
     return list(clusters_by_id.values()), remaining, reviewed
 
