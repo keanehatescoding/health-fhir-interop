@@ -174,7 +174,7 @@ def build_condition(person_id, source, encounter_id, code, text, res_id, visit_d
         meta=source_meta(source),
         subject={"reference": f"Patient/{person_id}"},
         encounter={"reference": f"Encounter/{encounter_id}"},
-        code={"coding": [{"code": code}] if code else [], "text": text},
+        code={"coding": [{"code": code}], "text": text} if code else {"text": text},
         recordedDate=_iso_date(visit_date),
     )
 
