@@ -2,6 +2,10 @@ name: Validate FHIR bundles
 
 on:
   push:
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   validate:
@@ -16,7 +20,7 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Run unit test suite
-        run: python -m pytest tests/ -q
+        run: python -m pytest tests/ -q --cov=audit --cov=matching --cov=query_api --cov=demo_ui --cov-report=term-missing --cov-fail-under=59
 
       - name: Run full pipeline from scratch (generate -> match -> build -> validate)
         run: |
