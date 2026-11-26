@@ -198,6 +198,15 @@ def apply_review_decisions(clusters, possible_links, decisions_map):
                 return saved_decision
         return None
 
+    def merge_clusters(a, b):
+        cluster_a, cluster_b = clusters_by_id.pop(a), clusters_by_id.pop(b)
+        merged_members = cluster_a["members"] + cluster_b["members"]
+        seed = ",".join(sorted(f"{m['source']}:{m['key']}" for m in merged_members))
+        new_id = str(uuid.uuid5(PERSON_ID_NAMESPACE, seed))
+        clusters_by_id[new_id] = {"person_id": new_id, "members": merged_members}
+        id_remap[a] = new_id
+        id_remap[b] = new_id
+
     remaining, reviewed = [], []
     for link in possible_links:
         a, b = resolve(link["person_id_a"]), resolve(link["person_id_b"])
@@ -207,17 +216,33 @@ def apply_review_decisions(clusters, possible_links, decisions_map):
             continue
         decision = decision_for(a, b)
         if decision == "approve" and a in clusters_by_id and b in clusters_by_id:
-            cluster_a, cluster_b = clusters_by_id.pop(a), clusters_by_id.pop(b)
-            merged_members = cluster_a["members"] + cluster_b["members"]
-            seed = ",".join(sorted(f"{m['source']}:{m['key']}" for m in merged_members))
-            new_id = str(uuid.uuid5(PERSON_ID_NAMESPACE, seed))
-            clusters_by_id[new_id] = {"person_id": new_id, "members": merged_members}
-            id_remap[a] = new_id
-            id_remap[b] = new_id
+            merge_clusters(a, b)
         elif decision == "reject":
             reviewed.append({**link, "person_id_a": a, "person_id_b": b, "review_decision": "reject"})
         else:
             remaining.append({**link, "person_id_a": a, "person_id_b": b})
+
+    # Merges created canonical IDs that did not exist when earlier links were
+    # evaluated. Reconsider unresolved links until decisions stop changing.
+    changed = True
+    while changed:
+        changed = False
+        next_remaining = []
+        for link in remaining:
+            a, b = resolve(link["person_id_a"]), resolve(link["person_id_b"])
+            if a == b:
+                changed = True
+                continue
+            decision = decision_for(a, b)
+            if decision == "approve" and a in clusters_by_id and b in clusters_by_id:
+                merge_clusters(a, b)
+                changed = True
+            elif decision == "reject":
+                reviewed.append({**link, "person_id_a": a, "person_id_b": b, "review_decision": "reject"})
+                changed = True
+            else:
+                next_remaining.append({**link, "person_id_a": a, "person_id_b": b})
+        remaining = next_remaining
 
     def finalize(links):
         finalized = []
