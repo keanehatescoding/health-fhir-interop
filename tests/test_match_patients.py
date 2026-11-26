@@ -4,9 +4,12 @@ person, need human review, or are distinct. This is the part of the pipeline
 the CI drift-check (.github/workflows/validate-bundles.yml) can't protect:
 drift-check only proves a code change produces the SAME output as before, not
 that the scoring is CORRECT. These tests pin the actual matching behavior."""
+import uuid
+
 from matching.match_patients import (
     FUZZY_AUTO_LINK_THRESHOLD,
     FUZZY_REVIEW_THRESHOLD,
+    PERSON_ID_NAMESPACE,
     IdentityRecord,
     UnionFind,
     apply_review_decisions,
@@ -102,3 +105,141 @@ def test_apply_review_decisions_no_decision_stays_pending():
     assert remaining == links
     assert reviewed == []
     assert len(new_clusters) == 2
+
+
+def test_apply_review_decisions_finds_decision_saved_under_intermediate_canonical_id():
+    # A-B merges into M, M-D merges into N before A-C is processed; a reject
+    # saved against M-C must still apply when A-C is replayed as N-C.
+    clusters = [
+        make_cluster("A", ("s1", "a")),
+        make_cluster("B", ("s2", "b")),
+        make_cluster("C", ("s3", "c")),
+        make_cluster("D", ("s4", "d")),
+    ]
+    links = [
+        {"person_id_a": "A", "person_id_b": "B", "record_a": "s1:a", "record_b": "s2:b", "method": "fuzzy", "score": 0.6},
+        {"person_id_a": "A", "person_id_b": "D", "record_a": "s1:a", "record_b": "s4:d", "method": "fuzzy", "score": 0.6},
+        {"person_id_a": "A", "person_id_b": "C", "record_a": "s1:a", "record_b": "s3:c", "method": "fuzzy", "score": 0.6},
+    ]
+    m_members = [{"source": "s1", "key": "a"}, {"source": "s2", "key": "b"}]
+    m_seed = ",".join(sorted(f"{m['source']}:{m['key']}" for m in m_members))
+    m_id = str(uuid.uuid5(PERSON_ID_NAMESPACE, m_seed))
+
+    decisions = {
+        frozenset(("A", "B")): "approve",
+        frozenset((m_id, "D")): "approve",
+        frozenset((m_id, "C")): "reject",
+    }
+
+    new_clusters, remaining, reviewed = apply_review_decisions(clusters, links, decisions)
+
+    assert remaining == []
+    assert len(reviewed) == 1
+    assert reviewed[0]["review_decision"] == "reject"
+    assert reviewed[0]["record_a"] == "s1:a"
+    assert reviewed[0]["record_b"] == "s3:c"
+    assert {c["person_id"] for c in new_clusters} == {
+        str(uuid.uuid5(PERSON_ID_NAMESPACE, ",".join(sorted(["s1:a", "s2:b", "s4:d"])))),
+        "C",
+    }
+
+
+def test_apply_review_decisions_normalizes_stale_endpoints_after_later_merge():
+    clusters = [
+        make_cluster("A", ("s1", "a")),
+        make_cluster("B", ("s2", "b")),
+        make_cluster("C", ("s3", "c")),
+    ]
+    links = [
+        {"person_id_a": "A", "person_id_b": "C", "record_a": "s1:a", "record_b": "s3:c", "method": "fuzzy", "score": 0.6},
+        {"person_id_a": "A", "person_id_b": "B", "record_a": "s1:a", "record_b": "s2:b", "method": "fuzzy", "score": 0.6},
+    ]
+    decisions = {frozenset(("A", "B")): "approve"}
+
+    new_clusters, remaining, reviewed = apply_review_decisions(clusters, links, decisions)
+
+    merged_id = str(uuid.uuid5(PERSON_ID_NAMESPACE, ",".join(sorted(["s1:a", "s2:b"]))))
+    assert reviewed == []
+    assert len(remaining) == 1
+    assert remaining[0]["person_id_a"] == merged_id
+    assert remaining[0]["person_id_b"] == "C"
+    assert remaining[0]["record_a"] == "s1:a"
+    assert remaining[0]["record_b"] == "s3:c"
+    assert {c["person_id"] for c in new_clusters} == {merged_id, "C"}
+
+
+def test_apply_review_decisions_drops_links_folded_into_same_cluster():
+    clusters = [
+        make_cluster("A", ("s1", "a")),
+        make_cluster("B", ("s2", "b")),
+        make_cluster("C", ("s3", "c")),
+    ]
+    links = [
+        {"person_id_a": "B", "person_id_b": "C", "record_a": "s2:b", "record_b": "s3:c", "method": "fuzzy", "score": 0.6},
+        {"person_id_a": "A", "person_id_b": "B", "record_a": "s1:a", "record_b": "s2:b", "method": "fuzzy", "score": 0.6},
+        {"person_id_a": "A", "person_id_b": "C", "record_a": "s1:a", "record_b": "s3:c", "method": "fuzzy", "score": 0.6},
+    ]
+    decisions = {
+        frozenset(("A", "B")): "approve",
+        frozenset(("A", "C")): "approve",
+    }
+
+    new_clusters, remaining, reviewed = apply_review_decisions(clusters, links, decisions)
+
+    assert remaining == []
+    assert reviewed == []
+    assert len(new_clusters) == 1
+
+
+def test_apply_review_decisions_applies_approval_saved_for_later_canonical_id():
+    # A-C is visited before A-B creates M; an approval saved as M-C must apply
+    # once M exists, not remain pending forever.
+    clusters = [
+        make_cluster("A", ("s1", "a")),
+        make_cluster("B", ("s2", "b")),
+        make_cluster("C", ("s3", "c")),
+    ]
+    links = [
+        {"person_id_a": "A", "person_id_b": "C", "record_a": "s1:a", "record_b": "s3:c", "method": "fuzzy", "score": 0.6},
+        {"person_id_a": "A", "person_id_b": "B", "record_a": "s1:a", "record_b": "s2:b", "method": "fuzzy", "score": 0.6},
+    ]
+    m_id = str(uuid.uuid5(PERSON_ID_NAMESPACE, ",".join(sorted(["s1:a", "s2:b"]))))
+    decisions = {
+        frozenset(("A", "B")): "approve",
+        frozenset((m_id, "C")): "approve",
+    }
+
+    new_clusters, remaining, reviewed = apply_review_decisions(clusters, links, decisions)
+
+    assert remaining == []
+    assert reviewed == []
+    assert len(new_clusters) == 1
+    assert {c["person_id"] for c in new_clusters} == {
+        str(uuid.uuid5(PERSON_ID_NAMESPACE, ",".join(sorted(["s1:a", "s2:b", "s3:c"])))),
+    }
+
+
+def test_apply_review_decisions_applies_rejection_saved_for_later_canonical_id():
+    clusters = [
+        make_cluster("A", ("s1", "a")),
+        make_cluster("B", ("s2", "b")),
+        make_cluster("C", ("s3", "c")),
+    ]
+    links = [
+        {"person_id_a": "A", "person_id_b": "C", "record_a": "s1:a", "record_b": "s3:c", "method": "fuzzy", "score": 0.6},
+        {"person_id_a": "A", "person_id_b": "B", "record_a": "s1:a", "record_b": "s2:b", "method": "fuzzy", "score": 0.6},
+    ]
+    m_id = str(uuid.uuid5(PERSON_ID_NAMESPACE, ",".join(sorted(["s1:a", "s2:b"]))))
+    decisions = {
+        frozenset(("A", "B")): "approve",
+        frozenset((m_id, "C")): "reject",
+    }
+
+    new_clusters, remaining, reviewed = apply_review_decisions(clusters, links, decisions)
+
+    assert remaining == []
+    assert len(reviewed) == 1
+    assert reviewed[0]["review_decision"] == "reject"
+    assert reviewed[0]["person_id_a"] == m_id
+    assert reviewed[0]["person_id_b"] == "C"
+    assert {c["person_id"] for c in new_clusters} == {m_id, "C"}
